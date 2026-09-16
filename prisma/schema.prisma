@@ -1,0 +1,649 @@
+// Sistema de Gestão de Laboratório - schema de banco de dados
+// PostgreSQL + Prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Contador genérico usado para gerar códigos únicos e sequenciais
+// (ex: código de parâmetro de ensaio, código de ordem de serviço de EPI).
+// O incremento é feito com UPSERT atômico (ver src/lib/services/sequence.ts),
+// seguro contra concorrência.
+model Sequence {
+  key        String @id
+  lastNumber Int    @default(0)
+
+  @@map("sequences")
+}
+
+// =========================================================================
+// AUTENTICAÇÃO / PERMISSÕES
+// =========================================================================
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) // roles de sistema (ADMIN) não podem ser excluídas
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique // ex: "clients.create"
+  description String
+  module      String // agrupamento para exibição na UI (ex: "clients")
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// Permite conceder ou revogar uma permissão específica para um usuário,
+// sobrepondo o que vem do papel (role) dele.
+model UserPermission {
+  userId       String
+  permissionId String
+  granted      Boolean // true = concede, false = revoga explicitamente
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@map("user_permissions")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  roleId       String
+  active       Boolean   @default(true)
+  employeeId   String?   @unique
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  role            Role             @relation(fields: [roleId], references: [id])
+  employee        Employee?        @relation(fields: [employeeId], references: [id])
+  userPermissions UserPermission[]
+
+  uploadedCompanyDocuments  CompanyDocument[]
+  uploadedEmployeeDocuments EmployeeDocument[]
+  createdEpiOrders          EpiOrder[]
+  createdProposals          Proposal[]              @relation("ProposalCreatedBy")
+  proposalStatusChanges     ProposalStatusHistory[]
+  auditLogs                 AuditLog[]
+  updatedTechnicalTexts     TechnicalText[]
+
+  @@map("users")
+}
+
+// =========================================================================
+// EMPRESA
+// =========================================================================
+
+model Company {
+  id                String   @id @default(cuid())
+  name              String
+  cnpj              String   @unique
+  email             String
+  addressStreet     String?
+  addressNumber     String?
+  addressComplement String?
+  addressDistrict   String?
+  addressCity       String?
+  addressState      String?
+  addressZipCode    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  documents CompanyDocument[]
+
+  @@map("companies")
+}
+
+model CompanyDocument {
+  id           String   @id @default(cuid())
+  companyId    String
+  fileName     String
+  storageKey   String
+  mimeType     String
+  size         Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id])
+
+  @@map("company_documents")
+}
+
+// =========================================================================
+// FUNCIONÁRIOS
+// =========================================================================
+
+model Employee {
+  id        String    @id @default(cuid())
+  name      String
+  cpf       String?   @unique
+  email     String?
+  phone     String?
+  position  String? // cargo
+  hiredAt   DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user      User?
+  documents EmployeeDocument[]
+  epiOrders EpiOrder[]
+
+  @@map("employees")
+}
+
+enum EmployeeDocumentCategory {
+  CONTRATACAO
+  SEGURANCA_TRABALHO
+  CURSO
+  EXAME
+  OUTRO
+}
+
+model EmployeeDocument {
+  id           String                   @id @default(cuid())
+  employeeId   String
+  category     EmployeeDocumentCategory
+  fileName     String
+  storageKey   String
+  mimeType     String
+  size         Int
+  uploadedById String
+  createdAt    DateTime                 @default(now())
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+
+  @@map("employee_documents")
+}
+
+// =========================================================================
+// EPI / ORDEM DE SERVIÇO
+// =========================================================================
+
+model Epi {
+  id          String   @id @default(cuid())
+  name        String
+  ca          String? // certificado de aprovação
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderItems EpiOrderItem[]
+
+  @@map("epi")
+}
+
+enum EpiOrderStatus {
+  PENDENTE
+  ACEITO
+}
+
+model EpiOrder {
+  id           String         @id @default(cuid())
+  code         String         @unique
+  employeeId   String
+  status       EpiOrderStatus @default(PENDENTE)
+  issuedAt     DateTime       @default(now())
+  acceptedAt   DateTime?
+  acceptedName String? // nome digitado no aceite (declaração de concordância)
+  storageKey   String? // PDF gerado
+  createdById  String
+  createdAt    DateTime       @default(now())
+
+  employee  Employee       @relation(fields: [employeeId], references: [id])
+  createdBy User           @relation(fields: [createdById], references: [id])
+  items     EpiOrderItem[]
+
+  @@map("epi_orders")
+}
+
+model EpiOrderItem {
+  id           String @id @default(cuid())
+  epiOrderId   String
+  epiId        String
+  nameSnapshot String
+
+  epiOrder EpiOrder @relation(fields: [epiOrderId], references: [id], onDelete: Cascade)
+  epi      Epi      @relation(fields: [epiId], references: [id])
+
+  @@map("epi_order_items")
+}
+
+// =========================================================================
+// ENSAIOS / LEGISLAÇÃO
+// =========================================================================
+
+enum TestMatrix {
+  EMISSOES_ATMOSFERICAS
+  QUALIDADE_AR
+  RUIDO_AMBIENTAL
+}
+
+model Test {
+  id                  String     @id @default(cuid())
+  name                String
+  method              String
+  cas                 String?
+  quantificationLimit String?
+  isSubcontracted     Boolean    @default(false)
+  isAccredited        Boolean    @default(false)
+  unit                String
+  parameterCode       String     @unique
+  value               Decimal    @db.Decimal(12, 2)
+  matrix              TestMatrix
+  active              Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  legislationTests     LegislationTest[]
+  collectionPointTests CollectionPointTest[]
+  proposalTests        ProposalTest[]
+
+  @@map("tests")
+}
+
+model Legislation {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  item             String?
+  frameworkProcess String? // processo de enquadramento
+  allowedLimit     String?
+  unit             String?
+  corrections      String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  legislationTests            LegislationTest[]
+  collectionPointLegislations CollectionPointLegislation[]
+
+  @@map("legislations")
+}
+
+model LegislationTest {
+  legislationId String
+  testId        String
+
+  legislation Legislation @relation(fields: [legislationId], references: [id], onDelete: Cascade)
+  test        Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@id([legislationId, testId])
+  @@map("legislation_tests")
+}
+
+// =========================================================================
+// CLIENTES
+// =========================================================================
+
+model Client {
+  id                String   @id @default(cuid())
+  cnpj              String   @unique
+  corporateName     String // razão social
+  tradeName         String? // nome fantasia
+  email             String?
+  phone             String?
+  addressStreet     String?
+  addressNumber     String?
+  addressComplement String?
+  addressDistrict   String?
+  addressCity       String?
+  addressState      String?
+  addressZipCode    String?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  contacts         ClientContact[]
+  collectionPoints CollectionPoint[]
+  proposals        Proposal[]
+
+  @@map("clients")
+}
+
+model ClientContact {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  email     String?
+  phone     String?
+  role      String? // cargo do contato
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  proposalContacts ProposalContact[]
+
+  @@map("client_contacts")
+}
+
+// =========================================================================
+// PONTOS DE COLETA
+// =========================================================================
+
+model CollectionPoint {
+  id        String     @id @default(cuid())
+  clientId  String
+  matrix    TestMatrix
+  name      String
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  airQualityDetail            CollectionPointAirQuality?
+  atmosphericDetail           CollectionPointAtmosphericEmission?
+  noiseDetail                 CollectionPointNoise?
+  collectionPointTests        CollectionPointTest[]
+  collectionPointLegislations CollectionPointLegislation[]
+  proposalCollectionPoints    ProposalCollectionPoint[]
+  ProposalTest                ProposalTest[]
+
+  @@map("collection_points")
+}
+
+// Campos específicos da matriz "Qualidade do ar" (definidos no requisito).
+model CollectionPointAirQuality {
+  collectionPointId       String  @id
+  location                String? // local da coleta
+  gpsLatitude             String?
+  gpsLongitude            String?
+  mapsLink                String? // link do Google Maps/Earth
+  surroundingsDescription String? // descrição do entorno
+  knownSamplingDeviation  String? // desvio da amostragem conhecido
+
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
+
+  @@map("collection_point_air_quality")
+}
+
+// A especificação original não detalha os campos técnicos desta matriz.
+// Estrutura preparada para receber campos específicos futuramente
+// (extraData guarda atributos adicionais sem exigir migration nova).
+model CollectionPointAtmosphericEmission {
+  collectionPointId String  @id
+  notes             String?
+  extraData         Json?
+
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
+
+  @@map("collection_point_atmospheric_emission")
+}
+
+// A especificação original não detalha os campos técnicos desta matriz.
+// Estrutura preparada para receber campos específicos futuramente.
+model CollectionPointNoise {
+  collectionPointId String  @id
+  notes             String?
+  extraData         Json?
+
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
+
+  @@map("collection_point_noise")
+}
+
+model CollectionPointTest {
+  collectionPointId String
+  testId            String
+
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
+  test            Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@id([collectionPointId, testId])
+  @@map("collection_point_tests")
+}
+
+model CollectionPointLegislation {
+  collectionPointId String
+  legislationId     String
+
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
+  legislation     Legislation     @relation(fields: [legislationId], references: [id], onDelete: Cascade)
+
+  @@id([collectionPointId, legislationId])
+  @@map("collection_point_legislations")
+}
+
+// =========================================================================
+// PROPOSTAS
+// =========================================================================
+
+enum ProposalStatus {
+  EM_ELABORACAO
+  ENVIADA
+  APROVADA
+  NAO_APROVADA
+  CANCELADA
+}
+
+enum PaymentMethod {
+  A_VISTA
+  PARCELADO
+}
+
+// Controla a numeração sequencial anual do código da proposta (PR-001/2026).
+// Atualizado dentro de uma transação com lock de linha para evitar
+// concorrência (dois usuários criando proposta ao mesmo tempo).
+model ProposalSequence {
+  year       Int @id
+  lastNumber Int @default(0)
+
+  @@map("proposal_sequences")
+}
+
+model Proposal {
+  id             String         @id @default(cuid())
+  code           String         @unique // ex: PR-001/2026-R00
+  sequenceNumber Int
+  year           Int
+  revision       Int            @default(0)
+  rootId         String // agrupa todas as revisões da mesma proposta original
+  supersededAt   DateTime? // preenchido quando uma revisão mais nova é criada
+  status         ProposalStatus @default(EM_ELABORACAO)
+
+  clientId       String
+  paymentMethod  PaymentMethod?
+  installments   Int?
+  additionalInfo String?
+
+  travelDistanceKm Decimal? @db.Decimal(10, 2)
+  travelValuePerKm Decimal? @db.Decimal(10, 2)
+  travelOtherCosts Decimal? @db.Decimal(12, 2)
+  travelTotalValue Decimal? @db.Decimal(12, 2)
+
+  testsTotal      Decimal @default(0) @db.Decimal(12, 2)
+  otherCostsTotal Decimal @default(0) @db.Decimal(12, 2)
+  totalValue      Decimal @default(0) @db.Decimal(12, 2)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client    Client @relation(fields: [clientId], references: [id])
+  createdBy User   @relation("ProposalCreatedBy", fields: [createdById], references: [id])
+
+  matrices         ProposalMatrix[]
+  contacts         ProposalContact[]
+  collectionPoints ProposalCollectionPoint[]
+  tests            ProposalTest[]
+  costs            ProposalCost[]
+  texts            ProposalText[]
+  statusHistory    ProposalStatusHistory[]
+
+  @@unique([sequenceNumber, year, revision])
+  @@index([rootId])
+  @@index([clientId])
+  @@map("proposals")
+}
+
+model ProposalMatrix {
+  proposalId String
+  matrix     TestMatrix
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@id([proposalId, matrix])
+  @@map("proposal_matrices")
+}
+
+model ProposalContact {
+  proposalId      String
+  clientContactId String
+
+  proposal      Proposal      @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  clientContact ClientContact @relation(fields: [clientContactId], references: [id])
+
+  @@id([proposalId, clientContactId])
+  @@map("proposal_contacts")
+}
+
+model ProposalCollectionPoint {
+  proposalId        String
+  collectionPointId String
+
+  proposal        Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id])
+
+  @@id([proposalId, collectionPointId])
+  @@map("proposal_collection_points")
+}
+
+// Snapshot do ensaio no momento da proposta: alterar o valor aqui NUNCA
+// altera o cadastro geral do ensaio (Test.value permanece intocado).
+model ProposalTest {
+  id                String @id @default(cuid())
+  proposalId        String
+  testId            String
+  collectionPointId String
+
+  nameSnapshot   String
+  methodSnapshot String
+  unitSnapshot   String
+  codeSnapshot   String
+  valueSnapshot  Decimal @db.Decimal(12, 2)
+  quantity       Int     @default(1)
+
+  proposal        Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  test            Test            @relation(fields: [testId], references: [id])
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id])
+
+  @@map("proposal_tests")
+}
+
+enum ProposalCostType {
+  ART
+  OUTRO
+}
+
+model ProposalCost {
+  id          String           @id @default(cuid())
+  proposalId  String
+  description String
+  value       Decimal          @db.Decimal(12, 2)
+  type        ProposalCostType @default(OUTRO)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@map("proposal_costs")
+}
+
+// Snapshot editável do texto técnico por matriz, copiado de TechnicalText
+// quando a matriz é selecionada na proposta, podendo ser editado por proposta.
+model ProposalText {
+  id         String     @id @default(cuid())
+  proposalId String
+  matrix     TestMatrix
+  content    String
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, matrix])
+  @@map("proposal_texts")
+}
+
+model ProposalStatusHistory {
+  id          String         @id @default(cuid())
+  proposalId  String
+  status      ProposalStatus
+  changedById String
+  createdAt   DateTime       @default(now())
+
+  proposal  Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  changedBy User     @relation(fields: [changedById], references: [id])
+
+  @@map("proposal_status_history")
+}
+
+// Texto técnico "base" administrável por matriz, usado como ponto de
+// partida ao montar uma nova proposta (depois copiado para ProposalText).
+model TechnicalText {
+  id          String     @id @default(cuid())
+  matrix      TestMatrix @unique
+  title       String
+  content     String
+  updatedById String?
+  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime   @default(now())
+
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("technical_texts")
+}
+
+// =========================================================================
+// AUDITORIA
+// =========================================================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String // ex: "CREATE", "UPDATE", "STATUS_CHANGE", "DELETE"
+  entityType  String // ex: "Client", "Proposal"
+  entityId    String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
