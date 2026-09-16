@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession, type Session } from "next-auth";
-import { ZodError, type ZodSchema } from "zod";
+import { ZodError, type ZodType } from "zod";
 import { authOptions } from "@/lib/auth";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 
@@ -38,7 +38,8 @@ export async function requireAnyPermission(keys: PermissionKey[]): Promise<Sessi
   return session;
 }
 
-export function parseBody<T>(schema: ZodSchema<T>, data: unknown): T {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- necessário para aceitar o tipo de entrada do zod independente do tipo de saída (schemas com `.default()`)
+export function parseBody<T>(schema: ZodType<T, any, any>, data: unknown): T {
   const result = schema.safeParse(data);
   if (!result.success) {
     const firstIssue = result.error.issues[0];

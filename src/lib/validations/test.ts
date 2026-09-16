@@ -15,3 +15,8 @@ export const testSchema = z.object({
 });
 
 export type TestInput = z.infer<typeof testSchema>;
+
+// A matriz define o prefixo do código do parâmetro (gerado automaticamente
+// na criação), então não é editável depois de cadastrado o ensaio.
+export const testUpdateSchema = testSchema.omit({ matrix: true });
+export type TestUpdateInput = z.infer<typeof testUpdateSchema>;
