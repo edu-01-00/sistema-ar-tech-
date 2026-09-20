@@ -4,10 +4,17 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
-  // playwright-core é uma dependência nativa do Node (usada para gerar PDFs)
-  // e não deve ser processada pelo bundler do Next.js no lado do servidor.
+  // puppeteer-core e @sparticuz/chromium são dependências nativas do Node
+  // (usadas para gerar PDFs) e não devem ser processadas pelo bundler do
+  // Next.js no lado do servidor — precisam ser resolvidas via require() em
+  // tempo de execução para que os binários do Chromium sejam encontrados.
   experimental: {
-    serverComponentsExternalPackages: ["playwright-core"],
+    serverComponentsExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
+    outputFileTracingIncludes: {
+      "/api/employees/[id]/epi-orders": ["node_modules/@sparticuz/chromium/**"],
+      "/api/epi-orders/[id]/accept": ["node_modules/@sparticuz/chromium/**"],
+      "/api/proposals/[id]/pdf": ["node_modules/@sparticuz/chromium/**"],
+    },
   },
 };
 

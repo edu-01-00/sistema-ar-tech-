@@ -15,7 +15,13 @@ let userId: string;
 let clientId: string;
 const createdProposalIds: string[] = [];
 
+const TEST_YEARS = [2098, 2099];
+
 beforeAll(async () => {
+  // Garante idempotência mesmo se uma execução anterior tiver sido
+  // interrompida antes do afterAll rodar.
+  await prisma.proposalSequence.deleteMany({ where: { year: { in: TEST_YEARS } } });
+
   const suffix = randomUUID().slice(0, 8);
 
   const role = await prisma.role.create({ data: { name: `TEST_ROLE_${suffix}` } });
@@ -43,6 +49,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { entityType: "Proposal", entityId: { in: createdProposalIds } } });
   await prisma.proposalStatusHistory.deleteMany({ where: { proposalId: { in: createdProposalIds } } });
+  await prisma.proposalSequence.deleteMany({ where: { year: { in: TEST_YEARS } } });
   await prisma.proposal.deleteMany({ where: { id: { in: createdProposalIds } } });
   await prisma.client.deleteMany({ where: { id: clientId } });
   await prisma.user.deleteMany({ where: { id: userId } });
