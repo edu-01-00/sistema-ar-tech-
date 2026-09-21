@@ -7,6 +7,7 @@ import { generateEpiOrderCode } from "@/lib/services/epi-service";
 import { getStorageDriver } from "@/lib/storage";
 import { renderHtmlToPdf } from "@/lib/pdf/render";
 import { buildEpiOrderHtml } from "@/lib/pdf/epi-order-template";
+import { getCompanyLogoDataUri } from "@/lib/pdf/logo";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -47,7 +48,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return created;
     });
 
-    const html = buildEpiOrderHtml(order, employee, company);
+    const logoDataUri = await getCompanyLogoDataUri(company);
+    const html = buildEpiOrderHtml(order, employee, company, logoDataUri);
     const pdfBuffer = await renderHtmlToPdf(html);
     const storageKey = await getStorageDriver().save({ category: "epi-orders", fileName: `${order.code}.pdf`, buffer: pdfBuffer });
     const updated = await prisma.epiOrder.update({ where: { id: order.id }, data: { storageKey }, include: { items: true } });

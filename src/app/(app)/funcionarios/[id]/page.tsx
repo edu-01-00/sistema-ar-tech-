@@ -33,7 +33,20 @@ export default async function FuncionarioDetailPage({ params }: { params: { id: 
     canManageEpi ? prisma.epi.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
   ]);
 
-  const documentCategories = Object.entries(EMPLOYEE_DOCUMENT_CATEGORY_LABELS).map(([value, label]) => ({ value, label }));
+  // Item 3: documentos do funcionário reorganizados em dois grupos —
+  // "Contratação" e "Segurança do Trabalho / Cursos" (que também cobre exames).
+  const DOCUMENT_CATEGORY_GROUPS: Record<string, string> = {
+    CONTRATACAO: "Contratação",
+    SEGURANCA_TRABALHO: "Segurança do Trabalho / Cursos",
+    CURSO: "Segurança do Trabalho / Cursos",
+    EXAME: "Segurança do Trabalho / Cursos",
+    OUTRO: "Outros",
+  };
+  const documentCategories = Object.entries(EMPLOYEE_DOCUMENT_CATEGORY_LABELS).map(([value, label]) => ({
+    value,
+    label,
+    group: DOCUMENT_CATEGORY_GROUPS[value],
+  }));
 
   return (
     <div>

@@ -12,6 +12,7 @@ export const employeeSchema = z.object({
   email: z.string().trim().email("E-mail inválido.").optional().nullable().or(z.literal("")),
   phone: z.string().trim().optional().nullable(),
   position: z.string().trim().optional().nullable(),
+  registrationNumber: z.string().trim().optional().nullable(),
   hiredAt: z.string().trim().optional().nullable(),
 });
 

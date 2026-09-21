@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/Field";
+import { BRAZILIAN_STATES, getMunicipalitiesForState } from "@/lib/br-locations";
 import type { Client } from "@prisma/client";
 
 export function ClientForm({ client }: { client?: Client }) {
@@ -90,11 +91,37 @@ export function ClientForm({ client }: { client?: Client }) {
         <Field label="Bairro">
           <input className="input" value={form.addressDistrict ?? ""} onChange={(e) => update("addressDistrict", e.target.value)} />
         </Field>
-        <Field label="Cidade">
-          <input className="input" value={form.addressCity ?? ""} onChange={(e) => update("addressCity", e.target.value)} />
+        <Field label="Estado (UF)">
+          <select
+            className="input"
+            value={form.addressState ?? ""}
+            onChange={(e) => setForm((f) => ({ ...f, addressState: e.target.value, addressCity: "" }))}
+          >
+            <option value="">Selecione...</option>
+            {BRAZILIAN_STATES.map((s) => (
+              <option key={s.uf} value={s.uf}>
+                {s.name} ({s.uf})
+              </option>
+            ))}
+          </select>
         </Field>
-        <Field label="UF">
-          <input className="input" maxLength={2} value={form.addressState ?? ""} onChange={(e) => update("addressState", e.target.value.toUpperCase())} />
+        <Field label="Município">
+          <select
+            className="input"
+            value={form.addressCity ?? ""}
+            onChange={(e) => update("addressCity", e.target.value)}
+            disabled={!form.addressState}
+          >
+            <option value="">{form.addressState ? "Selecione..." : "Selecione o estado primeiro"}</option>
+            {getMunicipalitiesForState(form.addressState).map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+            {form.addressCity && !getMunicipalitiesForState(form.addressState).includes(form.addressCity) && (
+              <option value={form.addressCity}>{form.addressCity}</option>
+            )}
+          </select>
         </Field>
       </div>
 

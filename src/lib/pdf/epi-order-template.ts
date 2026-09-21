@@ -6,6 +6,7 @@ export function buildEpiOrderHtml(
   order: EpiOrder & { items: EpiOrderItem[] },
   employee: Employee,
   company: Company | null,
+  logoDataUri?: string | null,
 ): string {
   const itemsHtml = order.items.map((item) => `<li>${escapeHtml(item.nameSnapshot)}</li>`).join("");
 
@@ -29,7 +30,9 @@ export function buildEpiOrderHtml(
   h1 { font-size: 18px; color: #1d4ed8; margin-bottom: 2px; }
   h2 { font-size: 14px; border-bottom: 2px solid #1d4ed8; padding-bottom: 4px; margin-top: 20px; }
   .meta { text-align: right; }
-  header { display: flex; justify-content: space-between; border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; }
+  header .brand { display: flex; align-items: center; gap: 12px; }
+  header img.logo { max-height: 56px; max-width: 160px; object-fit: contain; }
   ul { line-height: 1.6; }
   .acceptance-box { margin-top: 24px; border: 1px solid #999; padding: 12px; border-radius: 6px; }
   .acceptance-box.pending { color: #b45309; background: #fffbeb; }
@@ -38,9 +41,12 @@ export function buildEpiOrderHtml(
 </head>
 <body>
   <header>
-    <div>
-      <h1>${escapeHtml(company?.name ?? "Laboratório")}</h1>
-      ${company?.cnpj ? `<div>CNPJ: ${escapeHtml(company.cnpj)}</div>` : ""}
+    <div class="brand">
+      ${logoDataUri ? `<img class="logo" src="${logoDataUri}" alt="Logomarca" />` : ""}
+      <div>
+        <h1>${escapeHtml(company?.name ?? "Laboratório")}</h1>
+        ${company?.cnpj ? `<div>CNPJ: ${escapeHtml(company.cnpj)}</div>` : ""}
+      </div>
     </div>
     <div class="meta">
       <div><strong>Ordem de Serviço:</strong> ${escapeHtml(order.code)}</div>

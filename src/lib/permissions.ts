@@ -15,6 +15,7 @@ export type PermissionKey =
   | "roles.manage"
   | "tests.view"
   | "tests.manage"
+  | "measurement_units.manage"
   | "legislations.view"
   | "legislations.manage"
   | "clients.view"
@@ -44,6 +45,7 @@ export const PERMISSIONS: { key: PermissionKey; description: string; module: str
 
   { key: "tests.view", description: "Visualizar ensaios", module: "Ensaios" },
   { key: "tests.manage", description: "Cadastrar/editar/desativar ensaios", module: "Ensaios" },
+  { key: "measurement_units.manage", description: "Cadastrar/desativar unidades de medida (usadas em ensaios e legislação)", module: "Ensaios" },
 
   { key: "legislations.view", description: "Visualizar legislações", module: "Legislação" },
   { key: "legislations.manage", description: "Cadastrar/editar/desativar legislações", module: "Legislação" },

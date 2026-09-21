@@ -19,6 +19,20 @@ export const MATRIX_LABELS: Record<string, string> = {
   RUIDO_AMBIENTAL: "Ruído Ambiental",
 };
 
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  A_VISTA: "À vista",
+  PARCELADO: "Parcelado",
+  BOLETO: "Boleto",
+  DEPOSITO_PIX: "Depósito / PIX",
+};
+
+export const PAYMENT_TERM_LABELS: Record<string, string> = {
+  DIAS_15: "15 dias",
+  DIAS_30: "30 dias",
+  DIAS_15_30: "15/30 dias (dividido)",
+  DIAS_30_60_90: "30/60/90 dias",
+};
+
 export const PROPOSAL_STATUS_LABELS: Record<string, string> = {
   EM_ELABORACAO: "Em elaboração",
   ENVIADA: "Enviada",
@@ -41,4 +55,63 @@ export const EMPLOYEE_DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
   CURSO: "Curso",
   EXAME: "Exame",
   OUTRO: "Outro",
+};
+
+export const CHIMNEY_INSTALLATION_YEAR_LABELS: Record<string, string> = {
+  ANTERIOR_2007: "Anterior a 02/01/2007",
+  POSTERIOR_2007: "Posterior a 02/01/2007",
+};
+
+export const CHIMNEY_ACCESS_TYPE_LABELS: Record<string, string> = {
+  PLATAFORMA_FIXA: "Plataforma Fixa",
+  PLATAFORMA_ELEVATORIA: "Plataforma elevatória",
+  SOLO: "Solo",
+  CAMINHAO_MUNCK: "Caminhão Munck",
+  TELHADO: "Telhado",
+};
+
+export const CHIMNEY_COVERAGE_LABELS: Record<string, string> = {
+  COBERTO: "Coberto",
+  DESCOBERTO: "Descoberto",
+};
+
+export const CHIMNEY_GEOMETRY_LABELS: Record<string, string> = {
+  RETANGULAR: "Retangular",
+  CIRCULAR: "Circular",
+  QUADRADA: "Quadrada",
+};
+
+export const ATMOSPHERIC_EMISSION_TYPE_LABELS: Record<string, string> = {
+  COMBUSTAO: "Combustão",
+  PROCESSO: "Processo",
+  NAO_APLICADO: "Não aplicado",
+};
+
+export const ATMOSPHERIC_COMBUSTION_TYPE_LABELS: Record<string, string> = {
+  EXTERNA: "Externa",
+  NAO_EXTERNA: "Não externa",
+  NAO_APLICADO: "Não aplicado",
+};
+
+export const OPERATIONAL_CYCLE_LABELS: Record<string, string> = {
+  CONTINUO: "Contínuo",
+  NAO_CONTINUO: "Não Contínuo",
+};
+
+export const FUEL_CONSUMPTION_UNIT_LABELS: Record<string, string> = {
+  L_H: "L/h",
+  M3_H: "m³/h",
+  KG_H: "Kg/h",
+};
+
+export const PROPOSAL_TEXT_CATEGORY_LABELS: Record<string, string> = {
+  FORMA_PAGAMENTO_30: "Forma de Pagamento — condição 30 dias",
+  FORMA_PAGAMENTO_15_30: "Forma de Pagamento — condição 15/30 dias",
+  DECLARACAO_CONFORMIDADE: "Declaração da Conformidade e Regra de Decisão",
+  VALIDADE_PROPOSTA: "Validade da Proposta",
+  PRAZO_ENTREGA_RELATORIO: "Prazo de Entrega do Relatório",
+  OBSERVACAO_IMPORTANTE: "Observações Importantes",
+  PROTECAO_PROPRIEDADE_CLIENTE: "Proteção da Propriedade do Cliente",
+  CONFIRMACAO_PROPOSTA: "Confirmação da Proposta / Dúvidas",
+  OUTRAS_INFORMACOES: "Outras Informações",
 };

@@ -91,13 +91,15 @@ model User {
   employee        Employee?        @relation(fields: [employeeId], references: [id])
   userPermissions UserPermission[]
 
-  uploadedCompanyDocuments  CompanyDocument[]
-  uploadedEmployeeDocuments EmployeeDocument[]
-  createdEpiOrders          EpiOrder[]
-  createdProposals          Proposal[]              @relation("ProposalCreatedBy")
-  proposalStatusChanges     ProposalStatusHistory[]
-  auditLogs                 AuditLog[]
-  updatedTechnicalTexts     TechnicalText[]
+  uploadedCompanyDocuments     CompanyDocument[]
+  uploadedEmployeeDocuments    EmployeeDocument[]
+  createdEpiOrders             EpiOrder[]
+  createdProposals             Proposal[]              @relation("ProposalCreatedBy")
+  criticalAnalysisProposals    Proposal[]              @relation("ProposalCriticalAnalysisBy")
+  proposalStatusChanges        ProposalStatusHistory[]
+  auditLogs                    AuditLog[]
+  updatedTechnicalTexts        TechnicalText[]
+  updatedProposalTextTemplates ProposalTextTemplate[]
 
   @@map("users")
 }
@@ -105,6 +107,11 @@ model User {
 // =========================================================================
 // EMPRESA
 // =========================================================================
+
+enum ProfessionalRegistrationType {
+  CRQ
+  CREA
+}
 
 model Company {
   id                String   @id @default(cuid())
@@ -120,6 +127,23 @@ model Company {
   addressZipCode    String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  // Logomarca da empresa: usada na Ordem de Serviço de EPI e em propostas.
+  logoStorageKey String?
+  logoFileName   String?
+  logoMimeType   String?
+
+  // Dados bancários: usados automaticamente na proposta quando a forma de
+  // pagamento escolhida for Depósito/PIX, evitando digitação manual.
+  bankName        String?
+  bankAgency      String?
+  bankAccount     String?
+  bankAccountType String?
+  bankPixKey      String?
+
+  // Registro profissional (opcional, não obrigatório no cadastro).
+  professionalRegistrationType   ProfessionalRegistrationType?
+  professionalRegistrationNumber String?
 
   documents CompanyDocument[]
 
@@ -147,16 +171,17 @@ model CompanyDocument {
 // =========================================================================
 
 model Employee {
-  id        String    @id @default(cuid())
-  name      String
-  cpf       String?   @unique
-  email     String?
-  phone     String?
-  position  String? // cargo
-  hiredAt   DateTime?
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  name               String
+  cpf                String?   @unique
+  email              String?
+  phone              String?
+  position           String? // cargo
+  registrationNumber String? // número de registro do funcionário
+  hiredAt            DateTime?
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   user      User?
   documents EmployeeDocument[]
@@ -242,6 +267,22 @@ model EpiOrderItem {
   epi      Epi      @relation(fields: [epiId], references: [id])
 
   @@map("epi_order_items")
+}
+
+// =========================================================================
+// UNIDADES DE MEDIDA (catálogo centralizado)
+// =========================================================================
+
+// Catálogo único de unidades de medida, usado tanto no cadastro de Ensaios
+// quanto no de Legislação (select, não mais texto livre). Uma unidade
+// cadastrada aqui fica disponível automaticamente nos dois lugares.
+model MeasurementUnit {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("measurement_units")
 }
 
 // =========================================================================
@@ -379,40 +420,131 @@ model CollectionPoint {
   @@map("collection_points")
 }
 
-// Campos específicos da matriz "Qualidade do ar" (definidos no requisito).
+// Campos específicos da matriz "Qualidade do ar".
 model CollectionPointAirQuality {
   collectionPointId       String  @id
   location                String? // local da coleta
   gpsLatitude             String?
   gpsLongitude            String?
   mapsLink                String? // link do Google Maps/Earth
-  surroundingsDescription String? // descrição do entorno
+  surroundingsDescription String? // descrição do entorno (solo, construções, rodovias, empresas)
   knownSamplingDeviation  String? // desvio da amostragem conhecido
+
+  // Imagem da localização do ponto (upload persistente, JPG).
+  imageStorageKey String?
+  imageFileName   String?
+  imageMimeType   String?
 
   collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
 
   @@map("collection_point_air_quality")
 }
 
-// A especificação original não detalha os campos técnicos desta matriz.
-// Estrutura preparada para receber campos específicos futuramente
-// (extraData guarda atributos adicionais sem exigir migration nova).
+enum ChimneyInstallationYear {
+  ANTERIOR_2007
+  POSTERIOR_2007
+}
+
+enum ChimneyAccessType {
+  PLATAFORMA_FIXA
+  PLATAFORMA_ELEVATORIA
+  SOLO
+  CAMINHAO_MUNCK
+  TELHADO
+}
+
+enum ChimneyCoverage {
+  COBERTO
+  DESCOBERTO
+}
+
+enum ChimneyGeometry {
+  RETANGULAR
+  CIRCULAR
+  QUADRADA
+}
+
+enum AtmosphericEmissionType {
+  COMBUSTAO
+  PROCESSO
+  NAO_APLICADO
+}
+
+enum AtmosphericCombustionType {
+  EXTERNA
+  NAO_EXTERNA
+  NAO_APLICADO
+}
+
+enum OperationalCycle {
+  CONTINUO
+  NAO_CONTINUO
+}
+
+enum FuelConsumptionUnit {
+  L_H
+  M3_H
+  KG_H
+}
+
+// Campos específicos da matriz "Emissões atmosféricas" (todos opcionais).
 model CollectionPointAtmosphericEmission {
   collectionPointId String  @id
   notes             String?
   extraData         Json?
+
+  // Campos de seleção
+  installationYear ChimneyInstallationYear?
+  accessType       ChimneyAccessType?
+  coverage         ChimneyCoverage?
+  chimneyGeometry  ChimneyGeometry?
+  emissionType     AtmosphericEmissionType?
+  combustionType   AtmosphericCombustionType?
+  operationalCycle OperationalCycle?
+
+  // Campos de texto livre
+  geographicCoordinates           String?
+  processDescription              String?
+  rawMaterialsAndQuantities       String?
+  productsAndQuantities           String?
+  operatingDaysAndHours           String?
+  operatingConditions             String?
+  internalEquivalentDuctDiameterM String?
+  upstreamDistanceM               String?
+  downstreamDistanceM             String?
+  internalLengthM                 String?
+  internalWidthM                  String?
+  flangeSleeveCm                  String?
+  wallThicknessCm                 String?
+  totalChimneyLengthM             String?
+  totalChimneyLengthToGroundM     String?
+  fuel                            String?
+  fuelConsumption                 String?
+  fuelConsumptionUnit             FuelConsumptionUnit?
+  nominalPowerMw                  String?
+  pollutionControlType            String?
+  samplingDeviations              String?
 
   collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
 
   @@map("collection_point_atmospheric_emission")
 }
 
-// A especificação original não detalha os campos técnicos desta matriz.
-// Estrutura preparada para receber campos específicos futuramente.
+// Campos específicos da matriz "Ruído" (mesma estrutura de Qualidade do Ar,
+// conforme item 10 do requisito).
 model CollectionPointNoise {
-  collectionPointId String  @id
-  notes             String?
-  extraData         Json?
+  collectionPointId       String  @id
+  notes                   String?
+  extraData               Json?
+  gpsLatitude             String?
+  gpsLongitude            String?
+  mapsLink                String?
+  surroundingsDescription String?
+  knownSamplingDeviation  String?
+
+  imageStorageKey String?
+  imageFileName   String?
+  imageMimeType   String?
 
   collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id], onDelete: Cascade)
 
@@ -456,6 +588,17 @@ enum ProposalStatus {
 enum PaymentMethod {
   A_VISTA
   PARCELADO
+  BOLETO
+  DEPOSITO_PIX
+}
+
+// Prazo de vencimento/pagamento. Estrutura em enum para permitir adicionar
+// novas condições futuramente com uma migration incremental.
+enum PaymentTermOption {
+  DIAS_15
+  DIAS_30
+  DIAS_15_30
+  DIAS_30_60_90
 }
 
 // Controla a numeração sequencial anual do código da proposta (PR-001/2026).
@@ -481,7 +624,26 @@ model Proposal {
   clientId       String
   paymentMethod  PaymentMethod?
   installments   Int?
+  paymentTerm    PaymentTermOption?
   additionalInfo String?
+
+  // Item 15: exibir ou não o valor unitário no documento gerado. O valor
+  // é SEMPRE usado internamente no cálculo do total, independente disso.
+  exhibitUnitValue   Boolean @default(true)
+  // Item 16: exibir (e usar) a seção de custos adicionais no total.
+  // O cálculo do total dos ensaios nunca é afetado por esta opção.
+  useAdditionalCosts Boolean @default(true)
+
+  // Item 24-28: quais blocos de "Observações importantes" aparecem no
+  // documento gerado (nenhum, um, dois ou os três podem ser selecionados).
+  observationEmissoesAtmosfericas Boolean @default(false)
+  observationQualidadeAr          Boolean @default(false)
+  observationRuido                Boolean @default(false)
+
+  // Item 32-33: análise crítica/confirmação da proposta antes do envio.
+  criticalAnalysisConfirmed Boolean   @default(false)
+  criticalAnalysisById      String?
+  criticalAnalysisAt        DateTime?
 
   travelDistanceKm Decimal? @db.Decimal(10, 2)
   travelValuePerKm Decimal? @db.Decimal(10, 2)
@@ -496,8 +658,9 @@ model Proposal {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  client    Client @relation(fields: [clientId], references: [id])
-  createdBy User   @relation("ProposalCreatedBy", fields: [createdById], references: [id])
+  client             Client @relation(fields: [clientId], references: [id])
+  createdBy          User   @relation("ProposalCreatedBy", fields: [createdById], references: [id])
+  criticalAnalysisBy User?  @relation("ProposalCriticalAnalysisBy", fields: [criticalAnalysisById], references: [id])
 
   matrices         ProposalMatrix[]
   contacts         ProposalContact[]
@@ -505,6 +668,7 @@ model Proposal {
   tests            ProposalTest[]
   costs            ProposalCost[]
   texts            ProposalText[]
+  textSnapshots    ProposalTextSnapshot[]
   statusHistory    ProposalStatusHistory[]
 
   @@unique([sequenceNumber, year, revision])
@@ -609,6 +773,59 @@ model ProposalStatusHistory {
   changedBy User     @relation(fields: [changedById], references: [id])
 
   @@map("proposal_status_history")
+}
+
+// Categorias de textos padrão administráveis da proposta (item 35).
+// OBSERVACAO_IMPORTANTE usa o campo `matrix` para diferenciar os 3 blocos;
+// as demais categorias têm um único registro (matrix nulo).
+enum ProposalTextCategory {
+  FORMA_PAGAMENTO_30
+  FORMA_PAGAMENTO_15_30
+  DECLARACAO_CONFORMIDADE
+  VALIDADE_PROPOSTA
+  PRAZO_ENTREGA_RELATORIO
+  OBSERVACAO_IMPORTANTE
+  PROTECAO_PROPRIEDADE_CLIENTE
+  CONFIRMACAO_PROPOSTA
+  OUTRAS_INFORMACOES
+}
+
+// Texto padrão administrável, editável por usuários autorizados (item 36).
+// Alterar um texto padrão aqui NUNCA altera propostas já emitidas — o
+// conteúdo é copiado para ProposalTextSnapshot no momento da criação,
+// seguindo o mesmo padrão já usado por TechnicalText/ProposalText.
+model ProposalTextTemplate {
+  id          String               @id @default(cuid())
+  category    ProposalTextCategory
+  name        String
+  content     String
+  matrix      TestMatrix? // usado somente em OBSERVACAO_IMPORTANTE
+  active      Boolean              @default(true)
+  order       Int                  @default(0)
+  updatedById String?
+  updatedBy   User?                @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime             @updatedAt
+  createdAt   DateTime             @default(now())
+
+  @@unique([category, matrix])
+  @@map("proposal_text_templates")
+}
+
+// Snapshot imutável do texto padrão no momento em que a proposta foi criada
+// (ou em que o texto foi selecionado). Editar o ProposalTextTemplate depois
+// não afeta propostas já existentes.
+model ProposalTextSnapshot {
+  id         String               @id @default(cuid())
+  proposalId String
+  category   ProposalTextCategory
+  matrix     TestMatrix?
+  name       String
+  content    String
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, category, matrix])
+  @@map("proposal_text_snapshots")
 }
 
 // Texto técnico "base" administrável por matriz, usado como ponto de

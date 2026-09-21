@@ -105,6 +105,20 @@ describe("computeProposalTotal", () => {
     const totals = computeProposalTotal({ tests: [], costs: [], travel: null });
     expect(totals.totalValue).toBe(0);
   });
+
+  it("com useAdditionalCosts=false, o total considera somente os ensaios", () => {
+    const totals = computeProposalTotal({
+      tests: [{ quantity: 2, value: 100 }],
+      costs: [{ value: 250 }],
+      travel: { distanceKm: 30, valuePerKm: 2.5, otherCosts: 0 },
+      useAdditionalCosts: false,
+    });
+
+    expect(totals.testsTotal).toBe(200);
+    expect(totals.otherCostsTotal).toBe(250);
+    expect(totals.travelTotal).toBe(75);
+    expect(totals.totalValue).toBe(200);
+  });
 });
 
 describe("round2", () => {

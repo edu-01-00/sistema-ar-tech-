@@ -3,8 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/Field";
+import { UnitSelect } from "@/components/ui/UnitSelect";
 import { MATRIX_LABELS } from "@/lib/format";
-import type { Legislation, Test } from "@prisma/client";
+import type { Legislation, MeasurementUnit, Test } from "@prisma/client";
 
 interface LegislationWithTests extends Legislation {
   legislationTests: { test: Test }[];
@@ -13,9 +14,13 @@ interface LegislationWithTests extends Legislation {
 export function LegislationForm({
   legislation,
   availableTests,
+  measurementUnits,
+  canManageUnits,
 }: {
   legislation?: LegislationWithTests;
   availableTests: Test[];
+  measurementUnits: MeasurementUnit[];
+  canManageUnits: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -90,7 +95,7 @@ export function LegislationForm({
             <input className="input" value={form.allowedLimit ?? ""} onChange={(e) => update("allowedLimit", e.target.value)} />
           </Field>
           <Field label="Unidade">
-            <input className="input" value={form.unit ?? ""} onChange={(e) => update("unit", e.target.value)} />
+            <UnitSelect value={form.unit ?? ""} onChange={(v) => update("unit", v)} units={measurementUnits} canManageUnits={canManageUnits} />
           </Field>
           <Field label="Correções">
             <input className="input" value={form.corrections ?? ""} onChange={(e) => update("corrections", e.target.value)} />

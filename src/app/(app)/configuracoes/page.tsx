@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RolesPermissionsPanel } from "@/components/settings/RolesPermissionsPanel";
 import { TechnicalTextsPanel } from "@/components/settings/TechnicalTextsPanel";
+import { ProposalTextTemplatesPanel } from "@/components/settings/ProposalTextTemplatesPanel";
 import { formatDateTime } from "@/lib/format";
 
 export default async function ConfiguracoesPage() {
@@ -13,12 +14,13 @@ export default async function ConfiguracoesPage() {
   const canManageSettings = hasPermission(session.user.permissions, "settings.manage");
   const canViewAudit = hasPermission(session.user.permissions, "audit.view");
 
-  const [roles, users, technicalTexts, auditLogs] = await Promise.all([
+  const [roles, users, technicalTexts, proposalTextTemplates, auditLogs] = await Promise.all([
     canManageRoles
       ? prisma.role.findMany({ include: { rolePermissions: { include: { permission: true } }, _count: { select: { users: true } } }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
     canManageUsers ? prisma.user.findMany({ include: { role: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
     canManageSettings ? prisma.technicalText.findMany() : Promise.resolve([]),
+    canManageSettings ? prisma.proposalTextTemplate.findMany({ orderBy: [{ category: "asc" }, { order: "asc" }] }) : Promise.resolve([]),
     canViewAudit ? prisma.auditLog.findMany({ include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 }) : Promise.resolve([]),
   ]);
 
@@ -59,6 +61,19 @@ export default async function ConfiguracoesPage() {
 
       {canManageSettings && (
         <TechnicalTextsPanel texts={technicalTexts.map((t) => ({ matrix: t.matrix, title: t.title, content: t.content }))} />
+      )}
+
+      {canManageSettings && (
+        <ProposalTextTemplatesPanel
+          templates={proposalTextTemplates.map((t) => ({
+            id: t.id,
+            category: t.category,
+            matrix: t.matrix,
+            name: t.name,
+            content: t.content,
+            active: t.active,
+          }))}
+        />
       )}
 
       {canViewAudit && (

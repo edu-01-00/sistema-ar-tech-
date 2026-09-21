@@ -255,10 +255,38 @@ export function CostsSection({
   );
 }
 
-export function PaymentSection({ proposalId, initialPaymentMethod, initialInstallments }: { proposalId: string; initialPaymentMethod: string | null; initialInstallments: number | null }) {
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  A_VISTA: "À vista",
+  PARCELADO: "Parcelado",
+  BOLETO: "Boleto",
+  DEPOSITO_PIX: "Depósito / PIX",
+};
+
+interface CompanyBankData {
+  bankName: string | null;
+  bankAgency: string | null;
+  bankAccount: string | null;
+  bankAccountType: string | null;
+  bankPixKey: string | null;
+}
+
+export function PaymentSection({
+  proposalId,
+  initialPaymentMethod,
+  initialInstallments,
+  initialPaymentTerm,
+  company,
+}: {
+  proposalId: string;
+  initialPaymentMethod: string | null;
+  initialInstallments: number | null;
+  initialPaymentTerm: string | null;
+  company: CompanyBankData | null;
+}) {
   const router = useRouter();
   const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod ?? "A_VISTA");
   const [installments, setInstallments] = useState(initialInstallments ?? 2);
+  const [paymentTerm, setPaymentTerm] = useState(initialPaymentTerm ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -266,13 +294,20 @@ export function PaymentSection({ proposalId, initialPaymentMethod, initialInstal
     <div className="card p-5 max-w-md">
       <h2 className="text-sm font-semibold text-gray-800 mb-3">Forma de pagamento</h2>
       {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
-      <div className="flex gap-4 mb-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" checked={paymentMethod === "A_VISTA"} onChange={() => setPaymentMethod("A_VISTA")} /> À vista
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" checked={paymentMethod === "PARCELADO"} onChange={() => setPaymentMethod("PARCELADO")} /> Parcelado
-        </label>
+      <div className="flex flex-col gap-2 mb-3">
+        {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+          <label key={value} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              checked={paymentMethod === value}
+              onChange={() => {
+                setPaymentMethod(value);
+                setPaymentTerm("");
+              }}
+            />
+            {label}
+          </label>
+        ))}
       </div>
       {paymentMethod === "PARCELADO" && (
         <div className="mb-3">
@@ -280,14 +315,196 @@ export function PaymentSection({ proposalId, initialPaymentMethod, initialInstal
           <input type="number" min={2} max={60} className="input w-32" value={installments} onChange={(e) => setInstallments(Number(e.target.value) || 2)} />
         </div>
       )}
+      <div className="mb-3">
+        <label className="label">Prazo de vencimento</label>
+        <select className="input" value={paymentTerm} onChange={(e) => setPaymentTerm(e.target.value)}>
+          <option value="">Não informado</option>
+          {paymentMethod === "PARCELADO" ? (
+            <option value="DIAS_30_60_90">30/60/90 dias</option>
+          ) : (
+            <>
+              <option value="DIAS_15">15 dias</option>
+              <option value="DIAS_30">30 dias</option>
+              <option value="DIAS_15_30">15/30 dias (dividido)</option>
+            </>
+          )}
+        </select>
+      </div>
+      {paymentMethod === "DEPOSITO_PIX" && (
+        <div className="rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800 px-3 py-2 mb-3">
+          <p className="font-medium mb-1">Dados bancários da empresa (preenchidos automaticamente no documento):</p>
+          {company?.bankName || company?.bankPixKey ? (
+            <ul className="space-y-0.5">
+              {company.bankName && <li>Banco: {company.bankName}</li>}
+              {company.bankAgency && <li>Agência: {company.bankAgency}</li>}
+              {company.bankAccount && <li>Conta: {company.bankAccount} {company.bankAccountType ? `(${company.bankAccountType})` : ""}</li>}
+              {company.bankPixKey && <li>Chave PIX: {company.bankPixKey}</li>}
+            </ul>
+          ) : (
+            <p>Nenhum dado bancário cadastrado. Cadastre em Empresa &gt; Dados bancários.</p>
+          )}
+        </div>
+      )}
       <button
         className="btn-primary text-xs"
         disabled={saving}
         onClick={() =>
-          saveSection(`/api/proposals/${proposalId}/payment`, { paymentMethod, installments: paymentMethod === "PARCELADO" ? installments : undefined }, router, setError, setSaving)
+          saveSection(
+            `/api/proposals/${proposalId}/payment`,
+            { paymentMethod, installments: paymentMethod === "PARCELADO" ? installments : undefined, paymentTerm: paymentTerm || undefined },
+            router,
+            setError,
+            setSaving,
+          )
         }
       >
         {saving ? "Salvando..." : "Salvar pagamento"}
+      </button>
+    </div>
+  );
+}
+
+export function DisplayOptionsSection({
+  proposalId,
+  initialExhibitUnitValue,
+  initialUseAdditionalCosts,
+}: {
+  proposalId: string;
+  initialExhibitUnitValue: boolean;
+  initialUseAdditionalCosts: boolean;
+}) {
+  const router = useRouter();
+  const [exhibitUnitValue, setExhibitUnitValue] = useState(initialExhibitUnitValue);
+  const [useAdditionalCosts, setUseAdditionalCosts] = useState(initialUseAdditionalCosts);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="card p-5 max-w-md">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Opções de exibição</h2>
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="mb-3">
+        <label className="label">Exibir valor unitário no documento?</label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={exhibitUnitValue} onChange={() => setExhibitUnitValue(true)} /> Sim
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={!exhibitUnitValue} onChange={() => setExhibitUnitValue(false)} /> Não
+          </label>
+        </div>
+      </div>
+      <div className="mb-3">
+        <label className="label">Utilizar custos adicionais?</label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={useAdditionalCosts} onChange={() => setUseAdditionalCosts(true)} /> Sim
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={!useAdditionalCosts} onChange={() => setUseAdditionalCosts(false)} /> Não
+          </label>
+        </div>
+      </div>
+      <button
+        className="btn-primary text-xs"
+        disabled={saving}
+        onClick={() => saveSection(`/api/proposals/${proposalId}/display-options`, { exhibitUnitValue, useAdditionalCosts }, router, setError, setSaving)}
+      >
+        {saving ? "Salvando..." : "Salvar opções"}
+      </button>
+    </div>
+  );
+}
+
+export function ObservationsSection({
+  proposalId,
+  initialObservations,
+}: {
+  proposalId: string;
+  initialObservations: { observationEmissoesAtmosfericas: boolean; observationQualidadeAr: boolean; observationRuido: boolean };
+}) {
+  const router = useRouter();
+  const [observations, setObservations] = useState(initialObservations);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="card p-5 max-w-md">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Observações importantes</h2>
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <label className="flex items-center gap-2 text-sm mb-2">
+        <input
+          type="checkbox"
+          checked={observations.observationEmissoesAtmosfericas}
+          onChange={(e) => setObservations((o) => ({ ...o, observationEmissoesAtmosfericas: e.target.checked }))}
+        />
+        Emissões Atmosféricas em Duto ou Chaminé
+      </label>
+      <label className="flex items-center gap-2 text-sm mb-2">
+        <input
+          type="checkbox"
+          checked={observations.observationQualidadeAr}
+          onChange={(e) => setObservations((o) => ({ ...o, observationQualidadeAr: e.target.checked }))}
+        />
+        Monitoramento da Qualidade do Ar
+      </label>
+      <label className="flex items-center gap-2 text-sm mb-3">
+        <input
+          type="checkbox"
+          checked={observations.observationRuido}
+          onChange={(e) => setObservations((o) => ({ ...o, observationRuido: e.target.checked }))}
+        />
+        Avaliação de Pressão Sonora (Ruído)
+      </label>
+      <button
+        className="btn-primary text-xs"
+        disabled={saving}
+        onClick={() => saveSection(`/api/proposals/${proposalId}/observations`, observations, router, setError, setSaving)}
+      >
+        {saving ? "Salvando..." : "Salvar observações"}
+      </button>
+    </div>
+  );
+}
+
+export function CriticalAnalysisSection({
+  proposalId,
+  initialConfirmed,
+  confirmedByName,
+  confirmedAt,
+}: {
+  proposalId: string;
+  initialConfirmed: boolean;
+  confirmedByName: string | null;
+  confirmedAt: string | null;
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="card p-5 max-w-xl">
+      <h2 className="text-sm font-semibold text-gray-800 mb-3">Análise crítica / Confirmação</h2>
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <p className="text-xs text-gray-600 mb-3">
+        Ao confirmar, você declara ter verificado: os requisitos do cliente, a capacidade do laboratório, os métodos
+        selecionados e a qualificação de eventuais serviços providos externamente (item 6.6 da ISO/IEC 17025:2017).
+      </p>
+      {initialConfirmed ? (
+        <p className="text-sm text-green-700 mb-3">
+          Confirmada por <strong>{confirmedByName}</strong>{confirmedAt ? ` em ${new Date(confirmedAt).toLocaleString("pt-BR")}` : ""}.
+        </p>
+      ) : (
+        <p className="text-sm text-gray-500 mb-3">Ainda não confirmada.</p>
+      )}
+      <button
+        className={initialConfirmed ? "btn-secondary text-xs" : "btn-primary text-xs"}
+        disabled={saving}
+        onClick={() =>
+          saveSection(`/api/proposals/${proposalId}/critical-analysis`, { criticalAnalysisConfirmed: !initialConfirmed }, router, setError, setSaving)
+        }
+      >
+        {saving ? "Salvando..." : initialConfirmed ? "Desfazer confirmação" : "Confirmar análise crítica"}
       </button>
     </div>
   );

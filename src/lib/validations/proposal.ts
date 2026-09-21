@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { TEST_MATRIX_VALUES } from "@/lib/validations/test";
 
+export const PAYMENT_METHOD_VALUES = ["A_VISTA", "PARCELADO", "BOLETO", "DEPOSITO_PIX"] as const;
+export const PAYMENT_TERM_VALUES = ["DIAS_15", "DIAS_30", "DIAS_15_30", "DIAS_30_60_90"] as const;
+
 export const createProposalSchema = z.object({
   clientId: z.string().min(1, "Selecione o cliente."),
   matrices: z.array(z.enum(TEST_MATRIX_VALUES)).min(1, "Selecione ao menos uma matriz."),
   contactIds: z.array(z.string()).default([]),
+  // Item 15-16: escolhidos no início da criação da proposta.
+  exhibitUnitValue: z.boolean().default(true),
+  useAdditionalCosts: z.boolean().default(true),
 });
 export type CreateProposalInput = z.infer<typeof createProposalSchema>;
 
@@ -42,12 +48,30 @@ export const updateProposalCostsSchema = z.object({
   costs: z.array(proposalCostItemSchema).default([]),
 });
 
-export const updateProposalPaymentSchema = z.object({
-  paymentMethod: z.enum(["A_VISTA", "PARCELADO"]),
-  installments: z.coerce.number().int().min(2).max(60).optional().nullable(),
-}).refine((data) => data.paymentMethod === "A_VISTA" || (data.installments ?? 0) >= 2, {
-  message: "Informe a quantidade de parcelas (mínimo 2).",
-  path: ["installments"],
+export const updateProposalPaymentSchema = z
+  .object({
+    paymentMethod: z.enum(PAYMENT_METHOD_VALUES),
+    installments: z.coerce.number().int().min(2).max(60).optional().nullable(),
+    paymentTerm: z.enum(PAYMENT_TERM_VALUES).optional().nullable(),
+  })
+  .refine((data) => data.paymentMethod !== "PARCELADO" || (data.installments ?? 0) >= 2, {
+    message: "Informe a quantidade de parcelas (mínimo 2).",
+    path: ["installments"],
+  });
+
+export const updateProposalDisplayOptionsSchema = z.object({
+  exhibitUnitValue: z.boolean(),
+  useAdditionalCosts: z.boolean(),
+});
+
+export const updateProposalObservationsSchema = z.object({
+  observationEmissoesAtmosfericas: z.boolean(),
+  observationQualidadeAr: z.boolean(),
+  observationRuido: z.boolean(),
+});
+
+export const updateProposalCriticalAnalysisSchema = z.object({
+  criticalAnalysisConfirmed: z.boolean(),
 });
 
 export const updateProposalTextsSchema = z.object({

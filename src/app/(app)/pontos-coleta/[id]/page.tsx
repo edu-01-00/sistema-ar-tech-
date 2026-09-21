@@ -51,7 +51,7 @@ export default async function PontoColetaDetailPage({ params }: { params: { id: 
           </>
         }
       />
-      <CollectionPointForm point={point} clients={clients} tests={tests} legislations={legislations} />
+      <CollectionPointForm point={point} clients={clients} tests={tests} legislations={legislations} canManage={canManage} />
     </div>
   );
 }

@@ -61,8 +61,8 @@ describe("createProposal - geração de código e reinício anual", () => {
   it("gera códigos sequenciais únicos dentro do mesmo ano", async () => {
     vi.setSystemTime(new Date(2098, 0, 15));
 
-    const first = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] });
-    const second = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] });
+    const first = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
+    const second = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
     createdProposalIds.push(first.id, second.id);
 
     expect(first.year).toBe(2098);
@@ -76,7 +76,7 @@ describe("createProposal - geração de código e reinício anual", () => {
 
   it("reinicia a numeração sequencial em um novo ano", async () => {
     vi.setSystemTime(new Date(2099, 0, 1));
-    const proposal = await createProposal(userId, { clientId, matrices: ["RUIDO_AMBIENTAL"], contactIds: [] });
+    const proposal = await createProposal(userId, { clientId, matrices: ["RUIDO_AMBIENTAL"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
     createdProposalIds.push(proposal.id);
 
     expect(proposal.year).toBe(2099);
@@ -90,7 +90,9 @@ describe("createProposal - geração de código e reinício anual", () => {
     vi.setSystemTime(new Date(2098, 5, 1));
 
     const results = await Promise.all(
-      Array.from({ length: 5 }).map(() => createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] })),
+      Array.from({ length: 5 }).map(() =>
+        createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true }),
+      ),
     );
     createdProposalIds.push(...results.map((r) => r.id));
 
@@ -104,7 +106,7 @@ describe("createProposal - geração de código e reinício anual", () => {
 describe("createProposalRevision - controle de revisão", () => {
   it("cria uma revisão mantendo o histórico da anterior", async () => {
     vi.setSystemTime(new Date(2098, 2, 1));
-    const original = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] });
+    const original = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
     createdProposalIds.push(original.id);
 
     const revision = await createProposalRevision(userId, original.id);
@@ -122,7 +124,7 @@ describe("createProposalRevision - controle de revisão", () => {
 
   it("não permite revisar uma proposta que já foi substituída", async () => {
     vi.setSystemTime(new Date(2098, 3, 1));
-    const original = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] });
+    const original = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
     createdProposalIds.push(original.id);
     const revision = await createProposalRevision(userId, original.id);
     createdProposalIds.push(revision.id);
@@ -136,7 +138,7 @@ describe("createProposalRevision - controle de revisão", () => {
 describe("changeProposalStatus - transições de status", () => {
   it("permite o fluxo em elaboração -> enviada -> aprovada", async () => {
     vi.setSystemTime(new Date(2098, 4, 1));
-    const proposal = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] });
+    const proposal = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
     createdProposalIds.push(proposal.id);
 
     await changeProposalStatus(userId, proposal.id, "ENVIADA");
@@ -151,7 +153,7 @@ describe("changeProposalStatus - transições de status", () => {
 
   it("rejeita pular etapas do fluxo (em elaboração -> aprovada)", async () => {
     vi.setSystemTime(new Date(2098, 4, 2));
-    const proposal = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [] });
+    const proposal = await createProposal(userId, { clientId, matrices: ["QUALIDADE_AR"], contactIds: [], exhibitUnitValue: true, useAdditionalCosts: true });
     createdProposalIds.push(proposal.id);
 
     await expect(changeProposalStatus(userId, proposal.id, "APROVADA")).rejects.toThrow(ApiError);

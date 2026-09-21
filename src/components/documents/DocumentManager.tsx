@@ -9,12 +9,25 @@ export interface DocumentItem {
   fileName: string;
   size: number;
   createdAt: string | Date;
+  category?: string | null;
   categoryLabel?: string | null;
+}
+
+export interface DocumentCategoryOption {
+  value: string;
+  label: string;
+  /** Nome do grupo exibido no select (ex: "Contratação"). */
+  group?: string;
 }
 
 // Componente reutilizável de gestão de documentos (upload/listar/baixar/excluir),
 // usado pela Empresa e pelos Funcionários. Mantém toda a lógica de upload em
 // um único lugar para consistência de validação e feedback ao usuário.
+//
+// Quando `categories` é informado, os documentos existentes são filtrados
+// pela categoria selecionada: ao escolher uma categoria que já possui
+// documentos, eles aparecem na lista antes de qualquer novo envio — evitando
+// duplicar documentos que já existem para aquela categoria.
 export function DocumentManager({
   documents,
   documentsBaseUrl,
@@ -27,7 +40,7 @@ export function DocumentManager({
    * `${documentsBaseUrl}/${id}/download`. */
   documentsBaseUrl: string;
   canManage: boolean;
-  categories?: { value: string; label: string }[];
+  categories?: DocumentCategoryOption[];
 }) {
   const router = useRouter();
   const uploadUrl = documentsBaseUrl;
@@ -37,6 +50,16 @@ export function DocumentManager({
   const [category, setCategory] = useState(categories?.[0]?.value ?? "");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const groups = categories
+    ? categories.reduce<Map<string, DocumentCategoryOption[]>>((acc, opt) => {
+        const key = opt.group ?? "";
+        acc.set(key, [...(acc.get(key) ?? []), opt]);
+        return acc;
+      }, new Map())
+    : null;
+
+  const visibleDocuments = categories ? documents.filter((d) => d.category === category) : documents;
 
   async function handleUpload() {
     const file = fileInputRef.current?.files?.[0];
@@ -82,13 +105,25 @@ export function DocumentManager({
 
       {canManage && (
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
-          {categories && (
-            <select className="input sm:max-w-[220px]" value={category} onChange={(e) => setCategory(e.target.value)}>
-              {categories.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
+          {groups && (
+            <select className="input sm:max-w-[260px]" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {[...groups.entries()].map(([groupName, opts]) =>
+                groupName ? (
+                  <optgroup key={groupName} label={groupName}>
+                    {opts.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  opts.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))
+                ),
+              )}
             </select>
           )}
           <input ref={fileInputRef} type="file" accept="application/pdf" className="input" />
@@ -98,12 +133,17 @@ export function DocumentManager({
         </div>
       )}
       {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+      {categories && (
+        <p className="text-xs text-gray-500 mb-2">
+          Exibindo documentos da categoria selecionada. Escolha outra categoria acima para ver os documentos já enviados nela antes de enviar um novo.
+        </p>
+      )}
 
-      {documents.length === 0 ? (
-        <p className="text-sm text-gray-500">Nenhum documento enviado.</p>
+      {visibleDocuments.length === 0 ? (
+        <p className="text-sm text-gray-500">Nenhum documento enviado{categories ? " nesta categoria" : ""}.</p>
       ) : (
         <ul className="divide-y divide-gray-100">
-          {documents.map((doc) => (
+          {visibleDocuments.map((doc) => (
             <li key={doc.id} className="py-2 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm text-gray-800 truncate">{doc.fileName}</p>

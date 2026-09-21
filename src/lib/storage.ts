@@ -78,3 +78,7 @@ export function getStorageDriver(): StorageDriver {
 
 export const ALLOWED_DOCUMENT_MIME_TYPES = ["application/pdf"];
 export const MAX_DOCUMENT_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+
+// Usado para logomarca da empresa e imagens de localização de pontos de coleta.
+export const ALLOWED_IMAGE_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB

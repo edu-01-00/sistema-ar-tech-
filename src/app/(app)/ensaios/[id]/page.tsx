@@ -11,7 +11,11 @@ export default async function EnsaioDetailPage({ params }: { params: { id: strin
   const session = await requirePagePermission(["tests.view", "tests.manage"]);
   const canManage = hasPermission(session.user.permissions, "tests.manage");
 
-  const test = await prisma.test.findUnique({ where: { id: params.id } });
+  const canManageUnits = hasPermission(session.user.permissions, "measurement_units.manage");
+  const [test, measurementUnits] = await Promise.all([
+    prisma.test.findUnique({ where: { id: params.id } }),
+    prisma.measurementUnit.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
   if (!test) notFound();
 
   return (
@@ -35,7 +39,7 @@ export default async function EnsaioDetailPage({ params }: { params: { id: strin
           </>
         }
       />
-      <TestForm test={test} />
+      <TestForm test={test} measurementUnits={measurementUnits} canManageUnits={canManageUnits} />
     </div>
   );
 }

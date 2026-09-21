@@ -3,12 +3,13 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/Field";
+import { UnitSelect } from "@/components/ui/UnitSelect";
 import { MATRIX_LABELS } from "@/lib/format";
-import type { Test } from "@prisma/client";
+import type { MeasurementUnit, Test } from "@prisma/client";
 
 const MATRIX_OPTIONS = Object.entries(MATRIX_LABELS);
 
-export function TestForm({ test }: { test?: Test }) {
+export function TestForm({ test, measurementUnits, canManageUnits }: { test?: Test; measurementUnits: MeasurementUnit[]; canManageUnits: boolean }) {
   const router = useRouter();
   const [form, setForm] = useState({
     name: test?.name ?? "",
@@ -87,7 +88,7 @@ export function TestForm({ test }: { test?: Test }) {
           <input className="input" value={form.quantificationLimit ?? ""} onChange={(e) => update("quantificationLimit", e.target.value)} />
         </Field>
         <Field label="Unidade de medida" required>
-          <input className="input" value={form.unit} onChange={(e) => update("unit", e.target.value)} required />
+          <UnitSelect value={form.unit} onChange={(v) => update("unit", v)} units={measurementUnits} canManageUnits={canManageUnits} required />
         </Field>
         <Field label="Valor do ensaio (R$)" required>
           <input type="number" min={0} step="0.01" className="input" value={form.value} onChange={(e) => update("value", Number(e.target.value))} required />

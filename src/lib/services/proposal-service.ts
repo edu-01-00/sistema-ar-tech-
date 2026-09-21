@@ -17,12 +17,14 @@ type TxClient = Prisma.TransactionClient;
 export const proposalDetailInclude = {
   client: true,
   createdBy: { select: { id: true, name: true } },
+  criticalAnalysisBy: { select: { id: true, name: true } },
   matrices: true,
   contacts: { include: { clientContact: true } },
   collectionPoints: { include: { collectionPoint: { include: { airQualityDetail: true } } } },
   tests: { include: { test: true, collectionPoint: true } },
   costs: true,
   texts: true,
+  textSnapshots: true,
   statusHistory: { include: { changedBy: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } },
 } satisfies Prisma.ProposalInclude;
 
@@ -65,6 +67,7 @@ export async function recalculateProposalTotals(tx: TxClient, proposalId: string
       valuePerKm: proposal.travelValuePerKm ? Number(proposal.travelValuePerKm) : null,
       otherCosts: proposal.travelOtherCosts ? Number(proposal.travelOtherCosts) : null,
     },
+    useAdditionalCosts: proposal.useAdditionalCosts,
   });
 
   await tx.proposal.update({
@@ -115,6 +118,8 @@ export async function createProposal(userId: string, input: CreateProposalInput)
         status: "EM_ELABORACAO",
         clientId: input.clientId,
         createdById: userId,
+        exhibitUnitValue: input.exhibitUnitValue,
+        useAdditionalCosts: input.useAdditionalCosts,
         matrices: { create: input.matrices.map((matrix) => ({ matrix })) },
         contacts: { create: input.contactIds.map((clientContactId) => ({ clientContactId })) },
       },
@@ -124,6 +129,16 @@ export async function createProposal(userId: string, input: CreateProposalInput)
     if (baseTexts.length > 0) {
       await tx.proposalText.createMany({
         data: baseTexts.map((t) => ({ proposalId: id, matrix: t.matrix, content: t.content })),
+      });
+    }
+
+    // Item 36: os textos padrão da proposta são copiados (snapshot) no
+    // momento da criação — editar o template depois nunca afeta propostas
+    // já emitidas.
+    const textTemplates = await tx.proposalTextTemplate.findMany({ where: { active: true } });
+    if (textTemplates.length > 0) {
+      await tx.proposalTextSnapshot.createMany({
+        data: textTemplates.map((t) => ({ proposalId: id, category: t.category, matrix: t.matrix, name: t.name, content: t.content })),
       });
     }
 
@@ -154,6 +169,7 @@ export async function createProposalRevision(userId: string, proposalId: string)
       tests: true,
       costs: true,
       texts: true,
+      textSnapshots: true,
     },
   });
 
@@ -184,7 +200,13 @@ export async function createProposalRevision(userId: string, proposalId: string)
         createdById: userId,
         paymentMethod: current.paymentMethod,
         installments: current.installments,
+        paymentTerm: current.paymentTerm,
         additionalInfo: current.additionalInfo,
+        exhibitUnitValue: current.exhibitUnitValue,
+        useAdditionalCosts: current.useAdditionalCosts,
+        observationEmissoesAtmosfericas: current.observationEmissoesAtmosfericas,
+        observationQualidadeAr: current.observationQualidadeAr,
+        observationRuido: current.observationRuido,
         travelDistanceKm: current.travelDistanceKm,
         travelValuePerKm: current.travelValuePerKm,
         travelOtherCosts: current.travelOtherCosts,
@@ -209,6 +231,9 @@ export async function createProposalRevision(userId: string, proposalId: string)
         },
         costs: { create: current.costs.map((c) => ({ description: c.description, value: c.value, type: c.type })) },
         texts: { create: current.texts.map((t) => ({ matrix: t.matrix, content: t.content })) },
+        textSnapshots: {
+          create: current.textSnapshots.map((t) => ({ category: t.category, matrix: t.matrix, name: t.name, content: t.content })),
+        },
       },
     });
 

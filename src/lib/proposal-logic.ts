@@ -65,15 +65,22 @@ export function computeOtherCostsTotal(costs: ProposalCostLine[]): number {
   return round2(costs.reduce((acc, c) => acc + c.value, 0));
 }
 
+// `useAdditionalCosts` (item 16 do requisito): quando falso, o valor total da
+// proposta considera SOMENTE o total de ensaios — outros custos e
+// deslocamento continuam calculados (para exibição futura, se reativado),
+// mas não entram na soma final. O cálculo do total de ensaios em si nunca
+// muda, independente desta opção.
 export function computeProposalTotal(params: {
   tests: ProposalTestLine[];
   costs: ProposalCostLine[];
   travel: ProposalTravelInput | null | undefined;
+  useAdditionalCosts?: boolean;
 }): { testsTotal: number; otherCostsTotal: number; travelTotal: number; totalValue: number } {
   const testsTotal = computeTestsTotal(params.tests);
   const otherCostsTotal = computeOtherCostsTotal(params.costs);
   const travelTotal = computeTravelTotal(params.travel);
-  const totalValue = round2(testsTotal + otherCostsTotal + travelTotal);
+  const useAdditionalCosts = params.useAdditionalCosts ?? true;
+  const totalValue = round2(useAdditionalCosts ? testsTotal + otherCostsTotal + travelTotal : testsTotal);
   return { testsTotal, otherCostsTotal, travelTotal, totalValue };
 }
 

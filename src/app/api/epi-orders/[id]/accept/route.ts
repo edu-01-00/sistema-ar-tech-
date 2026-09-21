@@ -6,6 +6,7 @@ import { epiOrderAcceptSchema } from "@/lib/validations/employee";
 import { getStorageDriver } from "@/lib/storage";
 import { renderHtmlToPdf } from "@/lib/pdf/render";
 import { buildEpiOrderHtml } from "@/lib/pdf/epi-order-template";
+import { getCompanyLogoDataUri } from "@/lib/pdf/logo";
 
 // Registra o aceite da Ordem de Serviço de EPI (declaração de concordância).
 // Estrutura simples hoje (nome + data/hora), preparada para evoluir para
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     });
 
     const company = await prisma.company.findFirst();
-    const html = buildEpiOrderHtml(updated, updated.employee, company);
+    const logoDataUri = await getCompanyLogoDataUri(company);
+    const html = buildEpiOrderHtml(updated, updated.employee, company, logoDataUri);
     const pdfBuffer = await renderHtmlToPdf(html);
     const storageKey = await getStorageDriver().save({ category: "epi-orders", fileName: `${updated.code}.pdf`, buffer: pdfBuffer });
     if (order.storageKey) await getStorageDriver().remove(order.storageKey).catch(() => undefined);

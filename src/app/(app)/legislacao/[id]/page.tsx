@@ -11,9 +11,11 @@ export default async function LegislacaoDetailPage({ params }: { params: { id: s
   const session = await requirePagePermission(["legislations.view", "legislations.manage"]);
   const canManage = hasPermission(session.user.permissions, "legislations.manage");
 
-  const [legislation, tests] = await Promise.all([
+  const canManageUnits = hasPermission(session.user.permissions, "measurement_units.manage");
+  const [legislation, tests, measurementUnits] = await Promise.all([
     prisma.legislation.findUnique({ where: { id: params.id }, include: { legislationTests: { include: { test: true } } } }),
     prisma.test.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.measurementUnit.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
   if (!legislation) notFound();
 
@@ -38,7 +40,7 @@ export default async function LegislacaoDetailPage({ params }: { params: { id: s
           </>
         }
       />
-      <LegislationForm legislation={legislation} availableTests={tests} />
+      <LegislationForm legislation={legislation} availableTests={tests} measurementUnits={measurementUnits} canManageUnits={canManageUnits} />
     </div>
   );
 }

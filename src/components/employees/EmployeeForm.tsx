@@ -13,6 +13,7 @@ export function EmployeeForm({ employee }: { employee?: Employee }) {
     email: employee?.email ?? "",
     phone: employee?.phone ?? "",
     position: employee?.position ?? "",
+    registrationNumber: employee?.registrationNumber ?? "",
     hiredAt: employee?.hiredAt ? new Date(employee.hiredAt).toISOString().slice(0, 10) : "",
   });
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +69,9 @@ export function EmployeeForm({ employee }: { employee?: Employee }) {
         </Field>
         <Field label="Cargo">
           <input className="input" value={form.position ?? ""} onChange={(e) => update("position", e.target.value)} />
+        </Field>
+        <Field label="Número de registro">
+          <input className="input" value={form.registrationNumber ?? ""} onChange={(e) => update("registrationNumber", e.target.value)} />
         </Field>
         <Field label="Data de admissão">
           <input type="date" className="input" value={form.hiredAt} onChange={(e) => update("hiredAt", e.target.value)} />

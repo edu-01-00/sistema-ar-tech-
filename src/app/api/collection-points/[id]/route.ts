@@ -56,15 +56,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       if (existing.matrix === "EMISSOES_ATMOSFERICAS") {
         await tx.collectionPointAtmosphericEmission.upsert({
           where: { collectionPointId: params.id },
-          create: { collectionPointId: params.id, notes: data.atmosphericNotes || null },
-          update: { notes: data.atmosphericNotes || null },
+          create: { collectionPointId: params.id, ...(data.atmospheric ?? {}) },
+          update: { ...(data.atmospheric ?? {}) },
         });
       }
       if (existing.matrix === "RUIDO_AMBIENTAL") {
         await tx.collectionPointNoise.upsert({
           where: { collectionPointId: params.id },
-          create: { collectionPointId: params.id, notes: data.noiseNotes || null },
-          update: { notes: data.noiseNotes || null },
+          create: { collectionPointId: params.id, ...(data.noise ?? {}) },
+          update: { ...(data.noise ?? {}) },
         });
       }
 

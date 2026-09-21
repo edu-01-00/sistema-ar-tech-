@@ -6,7 +6,7 @@ import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { proposalDetailInclude } from "@/lib/services/proposal-service";
-import { formatCurrency, formatDateTime, MATRIX_LABELS, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_COLORS } from "@/lib/format";
+import { formatCurrency, formatDateTime, MATRIX_LABELS, PROPOSAL_STATUS_LABELS, PROPOSAL_STATUS_COLORS, PAYMENT_METHOD_LABELS } from "@/lib/format";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ReviseButton } from "@/components/proposals/ReviseButton";
 import {
@@ -16,6 +16,9 @@ import {
   PaymentSection,
   TextsSection,
   AdditionalInfoSection,
+  DisplayOptionsSection,
+  ObservationsSection,
+  CriticalAnalysisSection,
 } from "@/components/proposals/ProposalEditableSections";
 import type { WizardCollectionPoint } from "@/components/proposals/types";
 
@@ -29,7 +32,7 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
 
   const isEditable = proposal.status === "EM_ELABORACAO" && !proposal.supersededAt;
 
-  const [clientPointsRaw, revisions] = await Promise.all([
+  const [clientPointsRaw, revisions, company] = await Promise.all([
     isEditable
       ? prisma.collectionPoint.findMany({
           where: { clientId: proposal.clientId, active: true },
@@ -40,6 +43,9 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
       where: { rootId: proposal.rootId },
       select: { id: true, code: true, revision: true, status: true, supersededAt: true },
       orderBy: { revision: "asc" },
+    }),
+    prisma.company.findFirst({
+      select: { bankName: true, bankAgency: true, bankAccount: true, bankAccountType: true, bankPixKey: true },
     }),
   ]);
 
@@ -110,7 +116,10 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
           <p className="text-sm">Deslocamento: {formatCurrency(Number(proposal.travelTotalValue ?? 0))}</p>
           <p className="text-sm">Outros custos: {formatCurrency(Number(proposal.otherCostsTotal))}</p>
           <p className="text-sm font-semibold">Total: {formatCurrency(Number(proposal.totalValue))}</p>
-          <p className="text-sm">Pagamento: {proposal.paymentMethod === "PARCELADO" ? `Parcelado em ${proposal.installments}x` : proposal.paymentMethod === "A_VISTA" ? "À vista" : "Não definido"}</p>
+          <p className="text-sm">
+            Pagamento: {proposal.paymentMethod ? PAYMENT_METHOD_LABELS[proposal.paymentMethod] : "Não definido"}
+            {proposal.paymentMethod === "PARCELADO" ? ` em ${proposal.installments}x` : ""}
+          </p>
         </div>
       </div>
 
@@ -141,9 +150,34 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
             }}
             initialCosts={proposal.costs.map((c) => ({ description: c.description, value: Number(c.value), type: c.type }))}
           />
-          <PaymentSection proposalId={proposal.id} initialPaymentMethod={proposal.paymentMethod} initialInstallments={proposal.installments} />
+          <PaymentSection
+            proposalId={proposal.id}
+            initialPaymentMethod={proposal.paymentMethod}
+            initialInstallments={proposal.installments}
+            initialPaymentTerm={proposal.paymentTerm}
+            company={company}
+          />
           <TextsSection proposalId={proposal.id} matrices={matrices} initialTexts={textsMap} />
           <AdditionalInfoSection proposalId={proposal.id} initialValue={proposal.additionalInfo ?? ""} />
+          <DisplayOptionsSection
+            proposalId={proposal.id}
+            initialExhibitUnitValue={proposal.exhibitUnitValue}
+            initialUseAdditionalCosts={proposal.useAdditionalCosts}
+          />
+          <ObservationsSection
+            proposalId={proposal.id}
+            initialObservations={{
+              observationEmissoesAtmosfericas: proposal.observationEmissoesAtmosfericas,
+              observationQualidadeAr: proposal.observationQualidadeAr,
+              observationRuido: proposal.observationRuido,
+            }}
+          />
+          <CriticalAnalysisSection
+            proposalId={proposal.id}
+            initialConfirmed={proposal.criticalAnalysisConfirmed}
+            confirmedByName={proposal.criticalAnalysisBy?.name ?? null}
+            confirmedAt={proposal.criticalAnalysisAt?.toISOString() ?? null}
+          />
         </div>
       ) : (
         <div className="space-y-6">

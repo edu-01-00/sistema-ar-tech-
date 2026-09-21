@@ -33,3 +33,11 @@ export interface WizardTechnicalText {
   title: string;
   content: string;
 }
+
+export interface WizardCompany {
+  bankName: string | null;
+  bankAgency: string | null;
+  bankAccount: string | null;
+  bankAccountType: string | null;
+  bankPixKey: string | null;
+}

@@ -45,6 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         email: data.email || null,
         phone: data.phone || null,
         position: data.position || null,
+        registrationNumber: data.registrationNumber || null,
         hiredAt: data.hiredAt ? new Date(data.hiredAt) : null,
       },
     });

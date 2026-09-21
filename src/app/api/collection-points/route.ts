@@ -51,10 +51,10 @@ export async function POST(request: NextRequest) {
       createData.airQualityDetail = { create: data.airQuality };
     }
     if (data.matrix === "EMISSOES_ATMOSFERICAS") {
-      createData.atmosphericDetail = { create: { notes: data.atmosphericNotes || null } };
+      createData.atmosphericDetail = { create: data.atmospheric ?? {} };
     }
     if (data.matrix === "RUIDO_AMBIENTAL") {
-      createData.noiseDetail = { create: { notes: data.noiseNotes || null } };
+      createData.noiseDetail = { create: data.noise ?? {} };
     }
 
     const point = await prisma.collectionPoint.create({ data: createData });

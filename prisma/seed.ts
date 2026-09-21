@@ -8,6 +8,7 @@ import { createProposal, changeProposalStatus, recalculateProposalTotals } from 
 import { getStorageDriver } from "../src/lib/storage";
 import { renderHtmlToPdf } from "../src/lib/pdf/render";
 import { buildEpiOrderHtml } from "../src/lib/pdf/epi-order-template";
+import { syncReferenceData } from "../src/lib/services/reference-data-sync";
 
 function computeCnpjCheckDigits(base12: string): string {
   const calc = (base: string, weights: number[]) => {
@@ -44,12 +45,11 @@ async function makeSamplePdf(title: string, description: string): Promise<Buffer
 }
 
 async function main() {
-  const existingCompany = await prisma.company.findFirst();
-  if (existingCompany) {
-    console.log("Seed já executado anteriormente (empresa encontrada). Abortando para evitar duplicidade.");
-    return;
-  }
-
+  // As sincronizações abaixo (permissões, papéis, unidades de medida e
+  // textos padrão de proposta) são idempotentes e executam SEMPRE, mesmo em
+  // bancos que já têm a empresa cadastrada — isso permite que atualizações
+  // do sistema (novas permissões, novos textos padrão) cheguem a instalações
+  // já em produção sem exigir um reseed completo (que duplicaria dados).
   console.log("Semeando permissões...");
   for (const permission of PERMISSIONS) {
     await prisma.permission.upsert({
@@ -93,6 +93,15 @@ async function main() {
       .map((p) => ({ roleId: userRole.id, permissionId: p.id })),
   });
 
+  console.log("Semeando unidades de medida e textos padrão de proposta...");
+  await syncReferenceData(prisma);
+
+  const existingCompany = await prisma.company.findFirst();
+  if (existingCompany) {
+    console.log("Dados de demonstração já existem (empresa encontrada). Sincronização de referência concluída, encerrando.");
+    return;
+  }
+
   console.log("Semeando empresa...");
   const companyCnpj = computeCnpjCheckDigits("124765890001");
   const company = await prisma.company.create({
@@ -106,6 +115,13 @@ async function main() {
       addressCity: "Curitiba",
       addressState: "PR",
       addressZipCode: "81000-000",
+      bankName: "Banco do Brasil",
+      bankAgency: "1234-5",
+      bankAccount: "98765-4",
+      bankAccountType: "Conta Corrente",
+      bankPixKey: "contato@labartech.com.br",
+      professionalRegistrationType: "CRQ",
+      professionalRegistrationNumber: "CRQ-XX 12345",
     },
   });
 
@@ -117,6 +133,7 @@ async function main() {
       email: "ana.souza@labartech.com.br",
       phone: "(41) 99999-0001",
       position: "Coordenadora Técnica",
+      registrationNumber: "REG-0001",
       hiredAt: new Date("2021-03-01"),
     },
   });
@@ -466,6 +483,8 @@ async function main() {
     clientId: clientA.id,
     matrices: ["QUALIDADE_AR", "EMISSOES_ATMOSFERICAS"],
     contactIds: clientA.contacts.map((c) => c.id),
+    exhibitUnitValue: true,
+    useAdditionalCosts: true,
   });
   await prisma.proposal.update({
     where: { id: proposal1.id },
@@ -483,7 +502,10 @@ async function main() {
       travelValuePerKm: 3.5,
       travelOtherCosts: 80,
       paymentMethod: "A_VISTA",
+      paymentTerm: "DIAS_30",
       additionalInfo: "Proposta válida por 15 dias. Prazo de execução: 10 dias úteis após aprovação.",
+      observationEmissoesAtmosfericas: true,
+      observationQualidadeAr: true,
     },
   });
   await prisma.$transaction((tx) => recalculateProposalTotals(tx, proposal1.id));
@@ -493,6 +515,8 @@ async function main() {
     clientId: clientB.id,
     matrices: ["RUIDO_AMBIENTAL"],
     contactIds: [clientB.contacts[0].id],
+    exhibitUnitValue: false,
+    useAdditionalCosts: true,
   });
   await prisma.proposal.update({
     where: { id: proposal2.id },
@@ -505,7 +529,9 @@ async function main() {
       },
       paymentMethod: "PARCELADO",
       installments: 3,
+      paymentTerm: "DIAS_30_60_90",
       additionalInfo: "Medições a serem realizadas em período diurno e noturno.",
+      observationRuido: true,
     },
   });
   await prisma.$transaction((tx) => recalculateProposalTotals(tx, proposal2.id));
@@ -514,6 +540,8 @@ async function main() {
     clientId: clientC.id,
     matrices: ["QUALIDADE_AR"],
     contactIds: clientC.contacts.map((c) => c.id),
+    exhibitUnitValue: true,
+    useAdditionalCosts: false,
   });
   await prisma.proposal.update({
     where: { id: proposal3.id },
@@ -524,7 +552,7 @@ async function main() {
           { testId: testPm10.id, collectionPointId: pointCQualidadeAr.id, nameSnapshot: testPm10.name, methodSnapshot: testPm10.method, unitSnapshot: testPm10.unit, codeSnapshot: testPm10.parameterCode, valueSnapshot: testPm10.value, quantity: 4 },
         ],
       },
-      paymentMethod: "A_VISTA",
+      paymentMethod: "DEPOSITO_PIX",
       additionalInfo: "Cliente solicitou urgência na emissão do laudo.",
     },
   });

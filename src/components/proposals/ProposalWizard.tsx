@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MATRIX_LABELS, formatCurrency } from "@/lib/format";
-import type { WizardClient, WizardTechnicalText } from "./types";
+import type { WizardClient, WizardCompany, WizardTechnicalText } from "./types";
 
 const STEPS = [
   "Dados gerais",
@@ -13,9 +13,17 @@ const STEPS = [
   "Pagamento",
   "Texto técnico",
   "Informações adicionais",
+  "Observações importantes",
   "Revisão",
   "Gerar proposta",
 ];
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  A_VISTA: "À vista",
+  PARCELADO: "Parcelado",
+  BOLETO: "Boleto",
+  DEPOSITO_PIX: "Depósito / PIX",
+};
 
 interface TestRow {
   testId: string;
@@ -48,7 +56,15 @@ interface ProposalSummary {
   installments: number | null;
 }
 
-export function ProposalWizard({ clients, technicalTexts }: { clients: WizardClient[]; technicalTexts: WizardTechnicalText[] }) {
+export function ProposalWizard({
+  clients,
+  technicalTexts,
+  company,
+}: {
+  clients: WizardClient[];
+  technicalTexts: WizardTechnicalText[];
+  company: WizardCompany | null;
+}) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -60,14 +76,22 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
   const [clientId, setClientId] = useState("");
   const [matrices, setMatrices] = useState<string[]>([]);
   const [contactIds, setContactIds] = useState<string[]>([]);
+  const [exhibitUnitValue, setExhibitUnitValue] = useState(true);
+  const [useAdditionalCosts, setUseAdditionalCosts] = useState(true);
   const [collectionPointIds, setCollectionPointIds] = useState<string[]>([]);
   const [testRows, setTestRows] = useState<TestRow[]>([]);
   const [travel, setTravel] = useState({ travelDistanceKm: "", travelValuePerKm: "", travelOtherCosts: "" });
   const [costs, setCosts] = useState<CostRow[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<"A_VISTA" | "PARCELADO">("A_VISTA");
+  const [paymentMethod, setPaymentMethod] = useState<"A_VISTA" | "PARCELADO" | "BOLETO" | "DEPOSITO_PIX">("A_VISTA");
   const [installments, setInstallments] = useState(2);
+  const [paymentTerm, setPaymentTerm] = useState<"" | "DIAS_15" | "DIAS_30" | "DIAS_15_30" | "DIAS_30_60_90">("");
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [additionalInfo, setAdditionalInfo] = useState("");
+  const [observations, setObservations] = useState({
+    observationEmissoesAtmosfericas: false,
+    observationQualidadeAr: false,
+    observationRuido: false,
+  });
   const [summary, setSummary] = useState<ProposalSummary | null>(null);
 
   const selectedClient = clients.find((c) => c.id === clientId);
@@ -106,7 +130,7 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
       setError("Selecione o cliente e ao menos uma matriz.");
       return;
     }
-    const data = await callApi("/api/proposals", "POST", { clientId, matrices, contactIds });
+    const data = await callApi("/api/proposals", "POST", { clientId, matrices, contactIds, exhibitUnitValue, useAdditionalCosts });
     if (!data) return;
     setProposalId(data.proposal.id);
     setProposalCode(data.proposal.code);
@@ -174,7 +198,11 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
       setError("Informe a quantidade de parcelas (mínimo 2).");
       return;
     }
-    const data = await callApi(`/api/proposals/${proposalId}/payment`, "PATCH", { paymentMethod, installments: paymentMethod === "PARCELADO" ? installments : undefined });
+    const data = await callApi(`/api/proposals/${proposalId}/payment`, "PATCH", {
+      paymentMethod,
+      installments: paymentMethod === "PARCELADO" ? installments : undefined,
+      paymentTerm: paymentTerm || undefined,
+    });
     if (!data) return;
     const initialTexts: Record<string, string> = {};
     for (const m of matrices) {
@@ -194,14 +222,20 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
   async function handleStep7Submit() {
     const data = await callApi(`/api/proposals/${proposalId}/additional-info`, "PATCH", { additionalInfo });
     if (!data) return;
-    const full = await callApi(`/api/proposals/${proposalId}`, "GET");
-    if (!full) return;
-    setSummary(full.proposal);
     setStep(8);
   }
 
-  function goToGenerate() {
+  async function handleStep8Submit() {
+    const data = await callApi(`/api/proposals/${proposalId}/observations`, "PATCH", observations);
+    if (!data) return;
+    const full = await callApi(`/api/proposals/${proposalId}`, "GET");
+    if (!full) return;
+    setSummary(full.proposal);
     setStep(9);
+  }
+
+  function goToGenerate() {
+    setStep(10);
   }
 
   async function handleSendProposal() {
@@ -269,6 +303,33 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
               )}
             </div>
           )}
+
+          <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+            <div>
+              <label className="label">Exibir valor unitário no documento?</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={exhibitUnitValue} onChange={() => setExhibitUnitValue(true)} /> Sim
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={!exhibitUnitValue} onChange={() => setExhibitUnitValue(false)} /> Não
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Os valores são sempre usados no cálculo do total, mesmo quando ocultos no documento.</p>
+            </div>
+            <div>
+              <label className="label">Utilizar custos adicionais?</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={useAdditionalCosts} onChange={() => setUseAdditionalCosts(true)} /> Sim
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={!useAdditionalCosts} onChange={() => setUseAdditionalCosts(false)} /> Não
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Se &quot;Não&quot;, o total considera apenas os ensaios.</p>
+            </div>
+          </div>
 
           <button onClick={handleStep1Submit} disabled={saving} className="btn-primary">
             {saving ? "Salvando..." : "Avançar"}
@@ -417,20 +478,64 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
 
       {step === 5 && (
         <div className="card p-5 space-y-4 max-w-md">
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" checked={paymentMethod === "A_VISTA"} onChange={() => setPaymentMethod("A_VISTA")} /> À vista
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" checked={paymentMethod === "PARCELADO"} onChange={() => setPaymentMethod("PARCELADO")} /> Parcelado
-            </label>
+          <div>
+            <label className="label">Forma de pagamento</label>
+            <div className="flex flex-col gap-2">
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                <label key={value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={paymentMethod === value}
+                    onChange={() => {
+                      setPaymentMethod(value as typeof paymentMethod);
+                      setPaymentTerm("");
+                    }}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
           </div>
+
           {paymentMethod === "PARCELADO" && (
             <div>
               <label className="label">Quantidade de parcelas</label>
               <input type="number" min={2} max={60} className="input w-32" value={installments} onChange={(e) => setInstallments(Number(e.target.value) || 2)} />
             </div>
           )}
+
+          <div>
+            <label className="label">Prazo de vencimento</label>
+            <select className="input" value={paymentTerm} onChange={(e) => setPaymentTerm(e.target.value as typeof paymentTerm)}>
+              <option value="">Não informado</option>
+              {paymentMethod === "PARCELADO" ? (
+                <option value="DIAS_30_60_90">30/60/90 dias</option>
+              ) : (
+                <>
+                  <option value="DIAS_15">15 dias</option>
+                  <option value="DIAS_30">30 dias</option>
+                  <option value="DIAS_15_30">15/30 dias (dividido)</option>
+                </>
+              )}
+            </select>
+          </div>
+
+          {paymentMethod === "DEPOSITO_PIX" && (
+            <div className="rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800 px-3 py-2">
+              <p className="font-medium mb-1">Dados bancários da empresa (preenchidos automaticamente no documento):</p>
+              {company?.bankName || company?.bankPixKey ? (
+                <ul className="space-y-0.5">
+                  {company.bankName && <li>Banco: {company.bankName}</li>}
+                  {company.bankAgency && <li>Agência: {company.bankAgency}</li>}
+                  {company.bankAccount && <li>Conta: {company.bankAccount} {company.bankAccountType ? `(${company.bankAccountType})` : ""}</li>}
+                  {company.bankPixKey && <li>Chave PIX: {company.bankPixKey}</li>}
+                </ul>
+              ) : (
+                <p>Nenhum dado bancário cadastrado. Cadastre em Empresa &gt; Dados bancários.</p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button onClick={() => setStep(4)} className="btn-secondary">Voltar</button>
             <button onClick={handleStep5Submit} disabled={saving} className="btn-primary">
@@ -470,7 +575,43 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
         </div>
       )}
 
-      {step === 8 && summary && (
+      {step === 8 && (
+        <div className="card p-5 space-y-4 max-w-2xl">
+          <p className="text-sm text-gray-600">Selecione quais blocos de observações importantes devem aparecer no documento (nenhum, um, dois ou os três).</p>
+          <label className="flex items-center gap-2 text-sm border border-gray-200 rounded-md px-3 py-2">
+            <input
+              type="checkbox"
+              checked={observations.observationEmissoesAtmosfericas}
+              onChange={(e) => setObservations((o) => ({ ...o, observationEmissoesAtmosfericas: e.target.checked }))}
+            />
+            Emissões Atmosféricas em Duto ou Chaminé
+          </label>
+          <label className="flex items-center gap-2 text-sm border border-gray-200 rounded-md px-3 py-2">
+            <input
+              type="checkbox"
+              checked={observations.observationQualidadeAr}
+              onChange={(e) => setObservations((o) => ({ ...o, observationQualidadeAr: e.target.checked }))}
+            />
+            Monitoramento da Qualidade do Ar
+          </label>
+          <label className="flex items-center gap-2 text-sm border border-gray-200 rounded-md px-3 py-2">
+            <input
+              type="checkbox"
+              checked={observations.observationRuido}
+              onChange={(e) => setObservations((o) => ({ ...o, observationRuido: e.target.checked }))}
+            />
+            Avaliação de Pressão Sonora (Ruído)
+          </label>
+          <div className="flex gap-2">
+            <button onClick={() => setStep(7)} className="btn-secondary">Voltar</button>
+            <button onClick={handleStep8Submit} disabled={saving} className="btn-primary">
+              {saving ? "Salvando..." : "Avançar"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 9 && summary && (
         <div className="card p-5 space-y-4 max-w-3xl">
           <h3 className="text-sm font-semibold text-gray-800">Resumo da proposta {summary.code}</h3>
           <p className="text-sm">Cliente: <strong>{summary.client.corporateName}</strong></p>
@@ -480,17 +621,18 @@ export function ProposalWizard({ clients, technicalTexts }: { clients: WizardCli
           <p className="text-sm">Deslocamento: {formatCurrency(Number(summary.travelTotalValue ?? 0))}</p>
           <p className="text-sm">Outros custos: {formatCurrency(Number(summary.otherCostsTotal))}</p>
           <p className="text-sm font-semibold">Valor total: {formatCurrency(Number(summary.totalValue))}</p>
-          <p className="text-sm">Pagamento: {summary.paymentMethod === "PARCELADO" ? `Parcelado em ${summary.installments}x` : "À vista"}</p>
+          <p className="text-sm">Pagamento: {summary.paymentMethod ? PAYMENT_METHOD_LABELS[summary.paymentMethod] : "Não definido"}{summary.paymentMethod === "PARCELADO" ? ` em ${summary.installments}x` : ""}</p>
           <div className="flex gap-2">
-            <button onClick={() => setStep(7)} className="btn-secondary">Voltar</button>
+            <button onClick={() => setStep(8)} className="btn-secondary">Voltar</button>
             <button onClick={goToGenerate} className="btn-primary">Avançar</button>
           </div>
         </div>
       )}
 
-      {step === 9 && (
+      {step === 10 && (
         <div className="card p-5 space-y-4 max-w-2xl">
           <p className="text-sm text-gray-600">A proposta {proposalCode} foi salva com sucesso. Gere o documento para conferência e envio ao cliente.</p>
+          <p className="text-xs text-gray-500">A análise crítica pode ser confirmada na página da proposta antes do envio.</p>
           <div className="flex gap-2">
             <a href={`/api/proposals/${proposalId}/pdf`} target="_blank" rel="noreferrer" className="btn-secondary">
               Gerar / visualizar documento (PDF)
