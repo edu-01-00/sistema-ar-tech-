@@ -185,10 +185,14 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     <p><strong>ANALISADO CRITICAMENTE POR:</strong> ${proposal.criticalAnalysisBy ? escapeHtml(proposal.criticalAnalysisBy.name) : "Pendente"}</p>
     <p><strong>Data:</strong> ${escapeHtml(company?.addressCity ?? "")}${company?.addressCity ? " / " : ""}${formatDate(proposal.createdAt)}</p>`;
 
-  const professionalRegistration =
-    company?.professionalRegistrationType && company?.professionalRegistrationNumber
-      ? `<div>${escapeHtml(company.professionalRegistrationType)}: ${escapeHtml(company.professionalRegistrationNumber)}</div>`
-      : "";
+  const companyAddressParts = [
+    [company?.addressStreet, company?.addressNumber].filter(Boolean).join(", "),
+    company?.addressComplement,
+    company?.addressDistrict,
+    [company?.addressCity, company?.addressState].filter(Boolean).join("/"),
+    company?.addressZipCode ? `CEP ${company.addressZipCode}` : null,
+  ].filter(Boolean);
+  const companyAddressHtml = companyAddressParts.length > 0 ? `<div>${escapeHtml(companyAddressParts.join(" - "))}</div>` : "";
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -232,13 +236,11 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
         <h1>${escapeHtml(company?.name ?? "Laboratório")}</h1>
         ${company?.cnpj ? `<div>CNPJ: ${escapeHtml(company.cnpj)}</div>` : ""}
         ${company?.email ? `<div>${escapeHtml(company.email)}</div>` : ""}
-        ${professionalRegistration}
+        ${companyAddressHtml}
       </div>
     </div>
     <div class="doc-meta">
       <div><strong>Proposta:</strong> ${escapeHtml(proposal.code)}</div>
-      <div><strong>Revisão:</strong> R${String(proposal.revision).padStart(2, "0")}</div>
-      <div><strong>Data:</strong> ${formatDate(proposal.createdAt)}</div>
       <div><strong>Status:</strong> ${escapeHtml(proposal.status)}</div>
     </div>
   </header>
