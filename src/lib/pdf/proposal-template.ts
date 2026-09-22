@@ -2,6 +2,7 @@ import type { Company } from "@prisma/client";
 import type { ProposalWithDetails } from "@/lib/services/proposal-service";
 import { formatCurrency, formatDate, MATRIX_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_TERM_LABELS } from "@/lib/format";
 import { escapeHtml, nl2br } from "@/lib/pdf/html-utils";
+import { BRAZILIAN_STATES } from "@/lib/br-locations";
 
 type TextSnapshot = ProposalWithDetails["textSnapshots"][number];
 
@@ -9,10 +10,44 @@ function getSnapshot(snapshots: TextSnapshot[], category: string, matrix: string
   return snapshots.find((s) => s.category === category && s.matrix === matrix);
 }
 
+function stateFullName(uf: string | null | undefined): string {
+  if (!uf) return "";
+  return BRAZILIAN_STATES.find((s) => s.uf === uf)?.name ?? uf;
+}
+
 export function buildProposalHtml(proposal: ProposalWithDetails, company: Company | null, logoDataUri?: string | null): string {
-  const contactsHtml = proposal.contacts
-    .map((c) => `<li>${escapeHtml(c.clientContact.name)}${c.clientContact.role ? ` — ${escapeHtml(c.clientContact.role)}` : ""}</li>`)
-    .join("");
+  // Item "Dados do Cliente": bloco no formato de tabela com rótulos fixos
+  // (Razão Social, CNPJ/CEP, Endereço, Contato, Fone, E-mail).
+  const client = proposal.client;
+  const clientAddressLine = [
+    [client.addressStreet, client.addressNumber].filter(Boolean).join(", "),
+    client.addressDistrict,
+    [client.addressCity, stateFullName(client.addressState)].filter(Boolean).join(" / "),
+  ]
+    .filter(Boolean)
+    .join(" - ");
+  const clientContactNames =
+    proposal.contacts.length > 0
+      ? proposal.contacts.map((c) => escapeHtml(c.clientContact.name)).join(", ")
+      : escapeHtml(client.corporateName);
+
+  const clientDataBoxHtml = `
+    <div class="data-box">
+      <div class="box-title">Dados do Cliente</div>
+      <table class="box-table">
+        <tr><td class="label">Razão Social:</td><td colspan="3">${escapeHtml(client.corporateName)}</td></tr>
+        <tr>
+          <td class="label">CNPJ:</td><td>${escapeHtml(client.cnpj)}</td>
+          <td class="label">CEP:</td><td>${escapeHtml(client.addressZipCode ?? "")}</td>
+        </tr>
+        <tr><td class="label">Endereço:</td><td colspan="3">${escapeHtml(clientAddressLine) || "Não informado"}</td></tr>
+        <tr><td class="label">Contato:</td><td colspan="3">${clientContactNames}</td></tr>
+        <tr>
+          <td class="label">Fone:</td><td>${escapeHtml(client.phone ?? "")}</td>
+          <td class="label">E-mail:</td><td>${client.email ? escapeHtml(client.email) : ""}</td>
+        </tr>
+      </table>
+    </div>`;
 
   const testsByPoint = new Map<string, typeof proposal.tests>();
   for (const t of proposal.tests) {
@@ -219,6 +254,12 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
   .grand-total { font-size: 13px; font-weight: bold; background: #eff6ff; }
   .info-grid { display: flex; gap: 24px; margin-bottom: 10px; }
   .info-grid > div { flex: 1; }
+  .data-box { border: 1px solid #93c5fd; margin-bottom: 14px; }
+  .data-box .box-title { background: #dbeafe; font-weight: bold; padding: 4px 8px; border-bottom: 1px solid #93c5fd; font-size: 11px; }
+  .data-box .box-table { width: 100%; border-collapse: collapse; margin: 0; }
+  .data-box .box-table td { border: none; border-bottom: 1px solid #e5e7eb; padding: 3px 8px; font-size: 10.5px; }
+  .data-box .box-table tr:last-child td { border-bottom: none; }
+  .data-box .box-table td.label { font-weight: bold; width: 110px; white-space: nowrap; vertical-align: top; }
   .tech-text p, .obs-block p { text-align: justify; line-height: 1.5; }
   .bank-data { margin-top: 6px; }
   .bank-data ul { margin: 4px 0 0; padding-left: 18px; }
@@ -245,18 +286,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     </div>
   </header>
 
-  <h2>Dados do Cliente</h2>
-  <div class="info-grid">
-    <div>
-      <div><strong>Razão social:</strong> ${escapeHtml(proposal.client.corporateName)}</div>
-      <div><strong>CNPJ:</strong> ${escapeHtml(proposal.client.cnpj)}</div>
-      ${proposal.client.email ? `<div><strong>E-mail:</strong> ${escapeHtml(proposal.client.email)}</div>` : ""}
-    </div>
-    <div>
-      <strong>Solicitante(s):</strong>
-      <ul>${contactsHtml || "<li>Não informado</li>"}</ul>
-    </div>
-  </div>
+  ${clientDataBoxHtml}
 
   <h2>Serviços Solicitados</h2>
   ${pointsHtml || "<p>Nenhum ponto de coleta selecionado.</p>"}
