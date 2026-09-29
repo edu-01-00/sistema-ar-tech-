@@ -270,25 +270,51 @@ interface CompanyBankData {
   bankPixKey: string | null;
 }
 
+function buildPaymentPreviewText(params: {
+  paymentMethod: string;
+  paymentDueDays: number | null;
+  installments: number;
+  firstInstallmentDueDays: number | null;
+}): string | null {
+  const { paymentMethod, paymentDueDays, installments, firstInstallmentDueDays } = params;
+  if (paymentMethod === "PARCELADO") {
+    if (!firstInstallmentDueDays) return null;
+    const dueDays = Array.from({ length: installments }, (_, i) => firstInstallmentDueDays + i * 30);
+    const [first, ...rest] = dueDays;
+    return rest.length === 0
+      ? `Vencimento da 1ª parcela em ${first} dias após a finalização dos trabalhos de campo.`
+      : `Vencimento da 1ª parcela em ${first} dias e as demais em ${rest.join("/")} dias, após a finalização dos trabalhos de campo.`;
+  }
+  if (!paymentDueDays) return null;
+  return `Vencimento para ${paymentDueDays} dias assim que for finalizado os trabalhos de campo.`;
+}
+
 export function PaymentSection({
   proposalId,
   initialPaymentMethod,
   initialInstallments,
-  initialPaymentTerm,
+  initialPaymentDueDays,
+  initialFirstInstallmentDueDays,
   company,
 }: {
   proposalId: string;
   initialPaymentMethod: string | null;
   initialInstallments: number | null;
-  initialPaymentTerm: string | null;
+  initialPaymentDueDays: number | null;
+  initialFirstInstallmentDueDays: number | null;
   company: CompanyBankData | null;
 }) {
   const router = useRouter();
   const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod ?? "A_VISTA");
   const [installments, setInstallments] = useState(initialInstallments ?? 2);
-  const [paymentTerm, setPaymentTerm] = useState(initialPaymentTerm ?? "");
+  const [paymentDueDays, setPaymentDueDays] = useState(initialPaymentDueDays ?? 30);
+  const [firstInstallmentDueDays, setFirstInstallmentDueDays] = useState<15 | 30>(
+    initialFirstInstallmentDueDays === 15 ? 15 : 30,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const previewText = buildPaymentPreviewText({ paymentMethod, paymentDueDays, installments, firstInstallmentDueDays });
 
   return (
     <div className="card p-5 max-w-md">
@@ -297,39 +323,33 @@ export function PaymentSection({
       <div className="flex flex-col gap-2 mb-3">
         {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
           <label key={value} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              checked={paymentMethod === value}
-              onChange={() => {
-                setPaymentMethod(value);
-                setPaymentTerm("");
-              }}
-            />
+            <input type="radio" checked={paymentMethod === value} onChange={() => setPaymentMethod(value)} />
             {label}
           </label>
         ))}
       </div>
-      {paymentMethod === "PARCELADO" && (
+      {paymentMethod === "PARCELADO" ? (
+        <>
+          <div className="mb-3">
+            <label className="label">Quantidade de parcelas</label>
+            <input type="number" min={2} max={60} className="input w-32" value={installments} onChange={(e) => setInstallments(Number(e.target.value) || 2)} />
+          </div>
+          <div className="mb-3">
+            <label className="label">Vencimento da 1ª parcela</label>
+            <select className="input w-32" value={firstInstallmentDueDays} onChange={(e) => setFirstInstallmentDueDays(Number(e.target.value) === 15 ? 15 : 30)}>
+              <option value={15}>15 dias</option>
+              <option value={30}>30 dias</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1">As demais parcelas vencem a cada 30 dias a partir da 1ª.</p>
+          </div>
+        </>
+      ) : (
         <div className="mb-3">
-          <label className="label">Quantidade de parcelas</label>
-          <input type="number" min={2} max={60} className="input w-32" value={installments} onChange={(e) => setInstallments(Number(e.target.value) || 2)} />
+          <label className="label">Dias para vencimento</label>
+          <input type="number" min={1} max={365} className="input w-32" value={paymentDueDays} onChange={(e) => setPaymentDueDays(Number(e.target.value) || 1)} />
         </div>
       )}
-      <div className="mb-3">
-        <label className="label">Prazo de vencimento</label>
-        <select className="input" value={paymentTerm} onChange={(e) => setPaymentTerm(e.target.value)}>
-          <option value="">Não informado</option>
-          {paymentMethod === "PARCELADO" ? (
-            <option value="DIAS_30_60_90">30/60/90 dias</option>
-          ) : (
-            <>
-              <option value="DIAS_15">15 dias</option>
-              <option value="DIAS_30">30 dias</option>
-              <option value="DIAS_15_30">15/30 dias (dividido)</option>
-            </>
-          )}
-        </select>
-      </div>
+      {previewText && <p className="text-xs text-gray-500 mb-3 italic">&quot;{previewText}&quot;</p>}
       {paymentMethod === "DEPOSITO_PIX" && (
         <div className="rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800 px-3 py-2 mb-3">
           <p className="font-medium mb-1">Dados bancários da empresa (preenchidos automaticamente no documento):</p>
@@ -351,7 +371,12 @@ export function PaymentSection({
         onClick={() =>
           saveSection(
             `/api/proposals/${proposalId}/payment`,
-            { paymentMethod, installments: paymentMethod === "PARCELADO" ? installments : undefined, paymentTerm: paymentTerm || undefined },
+            {
+              paymentMethod,
+              installments: paymentMethod === "PARCELADO" ? installments : undefined,
+              firstInstallmentDueDays: paymentMethod === "PARCELADO" ? firstInstallmentDueDays : undefined,
+              paymentDueDays: paymentMethod === "PARCELADO" ? undefined : paymentDueDays,
+            },
             router,
             setError,
             setSaving,
@@ -368,14 +393,17 @@ export function DisplayOptionsSection({
   proposalId,
   initialExhibitUnitValue,
   initialUseAdditionalCosts,
+  initialExhibitTravelValue,
 }: {
   proposalId: string;
   initialExhibitUnitValue: boolean;
   initialUseAdditionalCosts: boolean;
+  initialExhibitTravelValue: boolean;
 }) {
   const router = useRouter();
   const [exhibitUnitValue, setExhibitUnitValue] = useState(initialExhibitUnitValue);
   const [useAdditionalCosts, setUseAdditionalCosts] = useState(initialUseAdditionalCosts);
+  const [exhibitTravelValue, setExhibitTravelValue] = useState(initialExhibitTravelValue);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -405,10 +433,24 @@ export function DisplayOptionsSection({
           </label>
         </div>
       </div>
+      <div className="mb-3">
+        <label className="label">Exibir valor de deslocamento no documento?</label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={exhibitTravelValue} onChange={() => setExhibitTravelValue(true)} /> Sim
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={!exhibitTravelValue} onChange={() => setExhibitTravelValue(false)} /> Não
+          </label>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">O valor do deslocamento é sempre somado ao total, mesmo quando oculto no documento.</p>
+      </div>
       <button
         className="btn-primary text-xs"
         disabled={saving}
-        onClick={() => saveSection(`/api/proposals/${proposalId}/display-options`, { exhibitUnitValue, useAdditionalCosts }, router, setError, setSaving)}
+        onClick={() =>
+          saveSection(`/api/proposals/${proposalId}/display-options`, { exhibitUnitValue, useAdditionalCosts, exhibitTravelValue }, router, setError, setSaving)
+        }
       >
         {saving ? "Salvando..." : "Salvar opções"}
       </button>
@@ -467,44 +509,78 @@ export function ObservationsSection({
   );
 }
 
+// Itens fixos (não administráveis) da análise crítica — não aparecem no PDF,
+// só na fase final de elaboração da proposta, para uso interno do laboratório.
+const CRITICAL_ANALYSIS_ITEMS = [
+  "Os requisitos do cliente estão definidos, documentados e entendidos;",
+  "O laboratório tem capacidade e recursos para atender aos requisitos;",
+  "Foram selecionados métodos ou procedimentos apropriados e capazes de atender aos requisitos do cliente;",
+  "Quando forem utilizados, os serviços providos externamente estão informados na proposta, e estão devidamente qualificados conforme o item 6.6 da norma ISO/IEC 17025:2017.",
+] as const;
+
 export function CriticalAnalysisSection({
   proposalId,
-  initialConfirmed,
+  initialReq1,
+  initialReq2,
+  initialReq3,
+  initialReq4,
   confirmedByName,
   confirmedAt,
 }: {
   proposalId: string;
-  initialConfirmed: boolean;
+  initialReq1: boolean;
+  initialReq2: boolean;
+  initialReq3: boolean;
+  initialReq4: boolean;
   confirmedByName: string | null;
   confirmedAt: string | null;
 }) {
   const router = useRouter();
+  const [req1, setReq1] = useState(initialReq1);
+  const [req2, setReq2] = useState(initialReq2);
+  const [req3, setReq3] = useState(initialReq3);
+  const [req4, setReq4] = useState(initialReq4);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const allChecked = req1 && req2 && req3 && req4;
+  const checks = [req1, req2, req3, req4];
+  const setters = [setReq1, setReq2, setReq3, setReq4];
 
   return (
     <div className="card p-5 max-w-xl">
       <h2 className="text-sm font-semibold text-gray-800 mb-3">Análise crítica / Confirmação</h2>
+      <p className="text-xs text-gray-500 mb-3">Uso interno — estes itens não aparecem no documento (PDF) da proposta.</p>
       {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
-      <p className="text-xs text-gray-600 mb-3">
-        Ao confirmar, você declara ter verificado: os requisitos do cliente, a capacidade do laboratório, os métodos
-        selecionados e a qualificação de eventuais serviços providos externamente (item 6.6 da ISO/IEC 17025:2017).
-      </p>
-      {initialConfirmed ? (
+      <div className="space-y-2 mb-3">
+        {CRITICAL_ANALYSIS_ITEMS.map((item, idx) => (
+          <label key={item} className="flex items-start gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="mt-0.5" checked={checks[idx]} onChange={(e) => setters[idx](e.target.checked)} />
+            {item}
+          </label>
+        ))}
+      </div>
+      {allChecked ? (
         <p className="text-sm text-green-700 mb-3">
           Confirmada por <strong>{confirmedByName}</strong>{confirmedAt ? ` em ${new Date(confirmedAt).toLocaleString("pt-BR")}` : ""}.
         </p>
       ) : (
-        <p className="text-sm text-gray-500 mb-3">Ainda não confirmada.</p>
+        <p className="text-sm text-gray-500 mb-3">Marque todos os itens para confirmar a análise crítica.</p>
       )}
       <button
-        className={initialConfirmed ? "btn-secondary text-xs" : "btn-primary text-xs"}
+        className="btn-primary text-xs"
         disabled={saving}
         onClick={() =>
-          saveSection(`/api/proposals/${proposalId}/critical-analysis`, { criticalAnalysisConfirmed: !initialConfirmed }, router, setError, setSaving)
+          saveSection(
+            `/api/proposals/${proposalId}/critical-analysis`,
+            { criticalAnalysisReq1: req1, criticalAnalysisReq2: req2, criticalAnalysisReq3: req3, criticalAnalysisReq4: req4 },
+            router,
+            setError,
+            setSaving,
+          )
         }
       >
-        {saving ? "Salvando..." : initialConfirmed ? "Desfazer confirmação" : "Confirmar análise crítica"}
+        {saving ? "Salvando..." : "Salvar análise crítica"}
       </button>
     </div>
   );

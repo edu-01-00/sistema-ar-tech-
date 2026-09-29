@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     await prisma.$transaction(async (tx) => {
       await tx.proposal.update({
         where: { id: proposal.id },
-        data: { exhibitUnitValue: data.exhibitUnitValue, useAdditionalCosts: data.useAdditionalCosts },
+        data: { exhibitUnitValue: data.exhibitUnitValue, useAdditionalCosts: data.useAdditionalCosts, exhibitTravelValue: data.exhibitTravelValue },
       });
       await recalculateProposalTotals(tx, proposal.id);
     });

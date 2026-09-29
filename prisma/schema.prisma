@@ -353,8 +353,8 @@ model LegislationTest {
 // =========================================================================
 
 model Client {
-  id                String   @id @default(cuid())
-  cnpj              String   @unique
+  id                String  @id @default(cuid())
+  cnpj              String  @unique
   corporateName     String // razão social
   tradeName         String? // nome fantasia
   email             String?
@@ -366,9 +366,16 @@ model Client {
   addressCity       String?
   addressState      String?
   addressZipCode    String?
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+
+  // Cadastro do cliente: dados complementares.
+  mainActivity      String? // atividade principal
+  activityStartDate DateTime? // data do início da atividade
+  stateRegistration String? // inscrição estadual
+  licenseNumber     String? // número da licença/certidão
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   contacts         ClientContact[]
   collectionPoints CollectionPoint[]
@@ -621,11 +628,16 @@ model Proposal {
   supersededAt   DateTime? // preenchido quando uma revisão mais nova é criada
   status         ProposalStatus @default(EM_ELABORACAO)
 
-  clientId       String
-  paymentMethod  PaymentMethod?
-  installments   Int?
-  paymentTerm    PaymentTermOption?
-  additionalInfo String?
+  clientId                String
+  paymentMethod           PaymentMethod?
+  installments            Int?
+  paymentTerm             PaymentTermOption? // legado — substituído por paymentDueDays/firstInstallmentDueDays
+  // Dias para vencimento (à vista/boleto/depósito-pix): texto gerado dinamicamente.
+  paymentDueDays          Int?
+  // Vencimento da 1ª parcela em dias (parcelado: 15 ou 30) — as demais vencem
+  // a cada 30 dias a partir dela, calculado dinamicamente.
+  firstInstallmentDueDays Int?
+  additionalInfo          String?
 
   // Item 15: exibir ou não o valor unitário no documento gerado. O valor
   // é SEMPRE usado internamente no cálculo do total, independente disso.
@@ -633,6 +645,9 @@ model Proposal {
   // Item 16: exibir (e usar) a seção de custos adicionais no total.
   // O cálculo do total dos ensaios nunca é afetado por esta opção.
   useAdditionalCosts Boolean @default(true)
+  // Exibir ou não a linha de deslocamento no Resumo Comercial. O valor do
+  // deslocamento continua sendo somado ao total independente desta opção.
+  exhibitTravelValue Boolean @default(true)
 
   // Item 24-28: quais blocos de "Observações importantes" aparecem no
   // documento gerado (nenhum, um, dois ou os três podem ser selecionados).
@@ -641,6 +656,13 @@ model Proposal {
   observationRuido                Boolean @default(false)
 
   // Item 32-33: análise crítica/confirmação da proposta antes do envio.
+  // Os 4 itens são selecionáveis individualmente na tela (fase final da
+  // elaboração), mas NÃO aparecem no PDF gerado — apenas o resultado
+  // (quem/quando) alimenta "Responsáveis pela Proposta".
+  criticalAnalysisReq1      Boolean   @default(false)
+  criticalAnalysisReq2      Boolean   @default(false)
+  criticalAnalysisReq3      Boolean   @default(false)
+  criticalAnalysisReq4      Boolean   @default(false)
   criticalAnalysisConfirmed Boolean   @default(false)
   criticalAnalysisById      String?
   criticalAnalysisAt        DateTime?

@@ -1,8 +1,10 @@
 import type { Company } from "@prisma/client";
 import type { ProposalWithDetails } from "@/lib/services/proposal-service";
-import { formatCurrency, formatDate, MATRIX_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_TERM_LABELS } from "@/lib/format";
+import { formatCurrency, formatDate, MATRIX_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/format";
 import { escapeHtml, nl2br } from "@/lib/pdf/html-utils";
 import { BRAZILIAN_STATES } from "@/lib/br-locations";
+import { formatCnpj } from "@/lib/cnpj";
+import { buildPaymentConditionText } from "@/lib/proposal-logic";
 
 type TextSnapshot = ProposalWithDetails["textSnapshots"][number];
 
@@ -13,6 +15,29 @@ function getSnapshot(snapshots: TextSnapshot[], category: string, matrix: string
 function stateFullName(uf: string | null | undefined): string {
   if (!uf) return "";
   return BRAZILIAN_STATES.find((s) => s.uf === uf)?.name ?? uf;
+}
+
+// Destaca em negrito termos específicos do texto de Declaração de
+// Conformidade, sem alterar o conteúdo original (aplicado só na renderização).
+function boldTerms(html: string): string {
+  return html.replace(/• Risco Associado:/g, "<strong>• Risco Associado:</strong>").replace(/NÃO/g, "<strong>NÃO</strong>");
+}
+
+// Rodapé do PDF via footerTemplate do Puppeteer (fora do fluxo do <body>):
+// paginação à esquerda, "Emitente: CQ" + código do modelo ao centro, e um
+// espaço reservado à direita para o código do formulário — que só poderá ser
+// preenchido quando a lista mestra de documentos existir no sistema (não há
+// essa informação disponível ainda, então o campo fica em branco).
+export function buildProposalFooterTemplate(): string {
+  return `
+  <div style="width:100%; font-size:8px; color:#666; padding:0 14mm; margin:0; display:flex; justify-content:space-between; align-items:flex-start; font-family: Arial, Helvetica, sans-serif; box-sizing:border-box;">
+    <div>Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>
+    <div style="text-align:center;">
+      <div>Emitente: CQ</div>
+      <div style="font-size:6.5px;">MOD-01Rev01</div>
+    </div>
+    <div style="text-align:right;">&nbsp;</div>
+  </div>`;
 }
 
 export function buildProposalHtml(proposal: ProposalWithDetails, company: Company | null, logoDataUri?: string | null): string {
@@ -37,7 +62,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
       <table class="box-table">
         <tr><td class="label">Razão Social:</td><td colspan="3">${escapeHtml(client.corporateName)}</td></tr>
         <tr>
-          <td class="label">CNPJ:</td><td>${escapeHtml(client.cnpj)}</td>
+          <td class="label">CNPJ:</td><td>${escapeHtml(formatCnpj(client.cnpj))}</td>
           <td class="label">CEP:</td><td>${escapeHtml(client.addressZipCode ?? "")}</td>
         </tr>
         <tr><td class="label">Endereço:</td><td colspan="3">${escapeHtml(clientAddressLine) || "Não informado"}</td></tr>
@@ -76,7 +101,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
           <td>${lq}</td>
           <td>${escapeHtml(t.test.unit)}</td>
           <td class="text-center">${acreditado}</td>
-          <td class="text-right">${t.quantity}</td>
+          <td class="text-center">${t.quantity}</td>
           ${showUnitValue ? `<td class="text-right">${formatCurrency(Number(t.valueSnapshot))}</td><td class="text-right">${formatCurrency(Number(t.valueSnapshot) * t.quantity)}</td>` : ""}
         </tr>`;
         })
@@ -88,7 +113,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
         <thead>
           <tr>
             <th>Ensaio</th><th>Método</th><th>LQ</th><th>Unidade</th><th class="text-center">Acreditado</th>
-            <th class="text-right">Qtd.</th>
+            <th class="text-center">Qtd.</th>
             ${showUnitValue ? '<th class="text-right">Valor unit.</th><th class="text-right">Subtotal</th>' : ""}
           </tr>
         </thead>
@@ -97,47 +122,50 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     })
     .join("");
 
-  // Item 16: seção de custos só aparece se useAdditionalCosts estiver ativo.
-  // O total já reflete essa opção (calculado em recalculateProposalTotals);
-  // aqui apenas decidimos o que exibir.
+  // RESUMO COMERCIAL (antes "Custos"): mostra o valor total de cada ponto de
+  // coleta, seguido (se ativos) dos outros custos, depois o somatório total
+  // dos ensaios, o deslocamento (rótulo simples, sem o cálculo entre
+  // parênteses — exibido apenas se exhibitTravelValue estiver ativo, mas
+  // sempre somado ao valor final, exibido ou não) e por fim o valor total.
+  const pointSubtotalsHtml = proposal.collectionPoints
+    .map(({ collectionPoint }) => {
+      const tests = testsByPoint.get(collectionPoint.id) ?? [];
+      const subtotal = tests.reduce((sum, t) => sum + Number(t.valueSnapshot) * t.quantity, 0);
+      return `<tr><td>Valor total — ${escapeHtml(collectionPoint.name)}</td><td class="text-right">${formatCurrency(subtotal)}</td></tr>`;
+    })
+    .join("");
+
   const costsHtml = proposal.costs
     .map((c) => `<tr><td>${escapeHtml(c.description)}</td><td class="text-right">${formatCurrency(Number(c.value))}</td></tr>`)
     .join("");
+
   const travelHtml =
-    proposal.travelTotalValue && Number(proposal.travelTotalValue) > 0
-      ? `<tr><td>Deslocamento (${Number(proposal.travelDistanceKm ?? 0)} km x ${formatCurrency(Number(proposal.travelValuePerKm ?? 0))})</td><td class="text-right">${formatCurrency(Number(proposal.travelTotalValue))}</td></tr>`
+    proposal.exhibitTravelValue && proposal.travelTotalValue && Number(proposal.travelTotalValue) > 0
+      ? `<tr><td>Deslocamento</td><td class="text-right">${formatCurrency(Number(proposal.travelTotalValue))}</td></tr>`
       : "";
 
-  const custosSectionHtml = proposal.useAdditionalCosts
-    ? `
-    <h2>Custos</h2>
+  const custosSectionHtml = `
+    <h2>RESUMO COMERCIAL</h2>
     <table class="totals-table">
       <tbody>
+        ${pointSubtotalsHtml}
+        ${proposal.useAdditionalCosts ? costsHtml : ""}
+        <tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(Number(proposal.testsTotal))}</td></tr>
         ${travelHtml}
-        ${costsHtml}
-        <tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(Number(proposal.testsTotal))}</td></tr>
-        <tr class="grand-total"><td>Valor total da proposta</td><td class="text-right">${formatCurrency(Number(proposal.totalValue))}</td></tr>
-      </tbody>
-    </table>`
-    : `
-    <h2>Custos</h2>
-    <table class="totals-table">
-      <tbody>
-        <tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(Number(proposal.testsTotal))}</td></tr>
         <tr class="grand-total"><td>Valor total da proposta</td><td class="text-right">${formatCurrency(Number(proposal.totalValue))}</td></tr>
       </tbody>
     </table>`;
 
-  // Item 17-19: forma de pagamento + textos automáticos por condição +
-  // dados bancários automáticos quando Depósito/PIX.
+  // Item 17-19: forma de pagamento + texto automático gerado dinamicamente a
+  // partir dos dias de vencimento informados + dados bancários automáticos
+  // quando Depósito/PIX.
   const paymentMethodLabel = proposal.paymentMethod ? PAYMENT_METHOD_LABELS[proposal.paymentMethod] : "Não definida";
-  const paymentTermLabel = proposal.paymentTerm ? PAYMENT_TERM_LABELS[proposal.paymentTerm] : null;
-  const paymentConditionText =
-    proposal.paymentTerm === "DIAS_30"
-      ? getSnapshot(proposal.textSnapshots, "FORMA_PAGAMENTO_30")?.content
-      : proposal.paymentTerm === "DIAS_15_30"
-        ? getSnapshot(proposal.textSnapshots, "FORMA_PAGAMENTO_15_30")?.content
-        : null;
+  const paymentConditionText = buildPaymentConditionText({
+    paymentMethod: proposal.paymentMethod,
+    paymentDueDays: proposal.paymentDueDays,
+    installments: proposal.installments,
+    firstInstallmentDueDays: proposal.firstInstallmentDueDays,
+  });
 
   const bankDataHtml =
     proposal.paymentMethod === "DEPOSITO_PIX"
@@ -154,7 +182,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
 
   const paymentHtml = `
     <h2>Forma de Pagamento</h2>
-    <p><strong>${escapeHtml(paymentMethodLabel)}</strong>${proposal.paymentMethod === "PARCELADO" ? ` — ${proposal.installments}x` : ""}${paymentTermLabel ? ` — Vencimento: ${escapeHtml(paymentTermLabel)}` : ""}</p>
+    <p><strong>${escapeHtml(paymentMethodLabel)}</strong>${proposal.paymentMethod === "PARCELADO" ? ` — ${proposal.installments}x` : ""}</p>
     ${paymentConditionText ? `<p>${nl2br(paymentConditionText)}</p>` : ""}
     ${bankDataHtml}`;
 
@@ -191,26 +219,19 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     })
     .join("");
 
-  const textsHtml = proposal.texts
-    .map((t) => `<section class="tech-text"><h3>${MATRIX_LABELS[t.matrix] ?? t.matrix}</h3><p>${nl2br(t.content)}</p></section>`)
-    .join("");
+  // "Outras Informações" foi renomeada para "Informações Adicionais" e passou
+  // a incluir também o texto livre da proposta (antes era uma seção à parte).
+  const informacoesAdicionaisParts = [
+    outrasInformacoes ? nl2br(outrasInformacoes) : "",
+    proposal.additionalInfo ? nl2br(proposal.additionalInfo) : "",
+  ].filter(Boolean);
+  const informacoesAdicionaisHtml =
+    informacoesAdicionaisParts.length > 0
+      ? `<h2>Informações Adicionais</h2>${informacoesAdicionaisParts.map((p) => `<p>${p}</p>`).join("")}`
+      : "";
 
-  // Item 32: checklist de análise crítica — texto fixo (não administrável),
-  // conforme fornecido. Os itens aparecem marcados quando a análise crítica
-  // da proposta foi confirmada (item 33 registra quem e quando).
-  const checkMark = proposal.criticalAnalysisConfirmed ? "[x]" : "[ ]";
-  const criticalAnalysisItems = [
-    "Os requisitos do cliente estão definidos, documentados e entendidos;",
-    "O laboratório tem capacidade e recursos para atender aos requisitos;",
-    "Foram selecionados métodos ou procedimentos apropriados e capazes de atender aos requisitos do cliente;",
-    "Quando forem utilizados, os serviços providos externamente estão informados na proposta, e estão devidamente qualificados conforme o item 6.6 da norma ISO/IEC 17025:2017.",
-  ];
-  const criticalAnalysisHtml = `
-    <h2>Análise Crítica/Confirmação</h2>
-    <p>Eu Ricardo Donato ao realizar a análise crítica deste contrato garanto que foram verificados os seguintes aspectos:</p>
-    <ul class="checklist">
-      ${criticalAnalysisItems.map((item) => `<li>${checkMark} ${escapeHtml(item)}</li>`).join("")}
-    </ul>`;
+  // A análise crítica (4 itens verificados internamente) não aparece no PDF
+  // da proposta — é uso interno, apenas na fase final de elaboração.
 
   // Item 33-34: responsáveis e data — sempre extraídos dos dados já
   // existentes (usuário logado, empresa), nunca digitados novamente.
@@ -237,13 +258,14 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; }
-  h1 { font-size: 18px; margin: 0 0 4px; color: #1d4ed8; }
+  h1 { font-size: 16px; margin: 0 0 4px; color: #1d4ed8; }
   h2 { font-size: 14px; margin: 18px 0 6px; border-bottom: 2px solid #1d4ed8; padding-bottom: 4px; }
   h3 { font-size: 12px; margin: 12px 0 4px; }
   header.doc-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; margin-bottom: 14px; }
   header.doc-header .brand { display: flex; align-items: center; gap: 12px; }
   header.doc-header img.logo { max-height: 60px; max-width: 170px; object-fit: contain; }
-  .doc-meta { text-align: right; font-size: 11px; }
+  header.doc-header .company-info { font-size: 9.5px; white-space: nowrap; }
+  .doc-meta { text-align: right; font-size: 10px; white-space: nowrap; }
   .doc-meta div { margin-bottom: 2px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
   th, td { border: 1px solid #d1d5db; padding: 5px 7px; font-size: 10.5px; }
@@ -266,16 +288,15 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
   .checklist { list-style: none; padding-left: 0; line-height: 1.7; }
   .signature-area { margin-top: 40px; display: flex; justify-content: space-between; }
   .signature-line { border-top: 1px solid #333; width: 260px; text-align: center; padding-top: 4px; font-size: 10px; }
-  footer { margin-top: 20px; font-size: 9px; color: #666; text-align: center; }
 </style>
 </head>
 <body>
   <header class="doc-header">
     <div class="brand">
       ${logoDataUri ? `<img class="logo" src="${logoDataUri}" alt="Logomarca" />` : ""}
-      <div>
+      <div class="company-info">
         <h1>${escapeHtml(company?.name ?? "Laboratório")}</h1>
-        ${company?.cnpj ? `<div>CNPJ: ${escapeHtml(company.cnpj)}</div>` : ""}
+        ${company?.cnpj ? `<div>CNPJ: ${escapeHtml(formatCnpj(company.cnpj))}</div>` : ""}
         ${company?.email ? `<div>${escapeHtml(company.email)}</div>` : ""}
         ${companyAddressHtml}
       </div>
@@ -298,7 +319,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
   <h2>Serviços a Serem Realizados por Provedor Externo</h2>
   ${externalProviderHtml}
 
-  ${declaracaoConformidade ? `<h2>Declaração da Conformidade e Regra de Decisão</h2><p>${nl2br(declaracaoConformidade)}</p>` : ""}
+  ${declaracaoConformidade ? `<h2>Declaração da Conformidade e Regra de Decisão</h2><p>${boldTerms(nl2br(declaracaoConformidade))}</p>` : ""}
 
   ${validadeProposta ? `<h2>Validade da Proposta</h2><p>${nl2br(validadeProposta)}</p>` : ""}
 
@@ -306,19 +327,11 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
 
   ${observacoesImportantesHtml ? `<h2>Observações Importantes</h2>${observacoesImportantesHtml}` : ""}
 
-  <h2>Textos Técnicos</h2>
-  ${textsHtml || "<p>Nenhum texto técnico associado.</p>"}
-
-  <h2>Informações Adicionais</h2>
-  <p>${nl2br(proposal.additionalInfo) || "Nenhuma informação adicional."}</p>
-
   ${protecaoPropriedadeCliente ? `<h2>Proteção da Propriedade do Cliente</h2><p>${nl2br(protecaoPropriedadeCliente)}</p>` : ""}
 
   ${confirmacaoProposta ? `<h2>Confirmação da Proposta / Dúvidas</h2><p>${nl2br(confirmacaoProposta)}</p>` : ""}
 
-  ${outrasInformacoes ? `<h2>Outras Informações</h2><p>${nl2br(outrasInformacoes)}</p>` : ""}
-
-  ${criticalAnalysisHtml}
+  ${informacoesAdicionaisHtml}
 
   ${responsaveisHtml}
 
@@ -326,8 +339,6 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     <div class="signature-line">${escapeHtml(company?.name ?? "Laboratório")}</div>
     <div class="signature-line">${escapeHtml(proposal.client.corporateName)} (Aceite do cliente)</div>
   </div>
-
-  <footer>Documento gerado automaticamente pelo sistema de gestão do laboratório em ${formatDate(new Date())}.</footer>
 </body>
 </html>`;
 }

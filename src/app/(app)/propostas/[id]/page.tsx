@@ -14,7 +14,6 @@ import {
   TestsSection,
   CostsSection,
   PaymentSection,
-  TextsSection,
   AdditionalInfoSection,
   DisplayOptionsSection,
   ObservationsSection,
@@ -68,8 +67,6 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
 
   const matrices = proposal.matrices.map((m) => m.matrix);
   const selectedPointIds = proposal.collectionPoints.map((cp) => cp.collectionPointId);
-  const textsMap: Record<string, string> = {};
-  for (const t of proposal.texts) textsMap[t.matrix] = t.content;
 
   return (
     <div>
@@ -154,15 +151,16 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
             proposalId={proposal.id}
             initialPaymentMethod={proposal.paymentMethod}
             initialInstallments={proposal.installments}
-            initialPaymentTerm={proposal.paymentTerm}
+            initialPaymentDueDays={proposal.paymentDueDays}
+            initialFirstInstallmentDueDays={proposal.firstInstallmentDueDays as 15 | 30 | null}
             company={company}
           />
-          <TextsSection proposalId={proposal.id} matrices={matrices} initialTexts={textsMap} />
           <AdditionalInfoSection proposalId={proposal.id} initialValue={proposal.additionalInfo ?? ""} />
           <DisplayOptionsSection
             proposalId={proposal.id}
             initialExhibitUnitValue={proposal.exhibitUnitValue}
             initialUseAdditionalCosts={proposal.useAdditionalCosts}
+            initialExhibitTravelValue={proposal.exhibitTravelValue}
           />
           <ObservationsSection
             proposalId={proposal.id}
@@ -174,7 +172,10 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
           />
           <CriticalAnalysisSection
             proposalId={proposal.id}
-            initialConfirmed={proposal.criticalAnalysisConfirmed}
+            initialReq1={proposal.criticalAnalysisReq1}
+            initialReq2={proposal.criticalAnalysisReq2}
+            initialReq3={proposal.criticalAnalysisReq3}
+            initialReq4={proposal.criticalAnalysisReq4}
             confirmedByName={proposal.criticalAnalysisBy?.name ?? null}
             confirmedAt={proposal.criticalAnalysisAt?.toISOString() ?? null}
           />

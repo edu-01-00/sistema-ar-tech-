@@ -4,12 +4,13 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/Field";
 import { BRAZILIAN_STATES, getMunicipalitiesForState } from "@/lib/br-locations";
+import { formatCnpj, maskCnpjInput } from "@/lib/cnpj";
 import type { Client } from "@prisma/client";
 
 export function ClientForm({ client }: { client?: Client }) {
   const router = useRouter();
   const [form, setForm] = useState({
-    cnpj: client?.cnpj ?? "",
+    cnpj: client?.cnpj ? formatCnpj(client.cnpj) : "",
     corporateName: client?.corporateName ?? "",
     tradeName: client?.tradeName ?? "",
     email: client?.email ?? "",
@@ -21,6 +22,10 @@ export function ClientForm({ client }: { client?: Client }) {
     addressCity: client?.addressCity ?? "",
     addressState: client?.addressState ?? "",
     addressZipCode: client?.addressZipCode ?? "",
+    mainActivity: client?.mainActivity ?? "",
+    activityStartDate: client?.activityStartDate ? new Date(client.activityStartDate).toISOString().slice(0, 10) : "",
+    stateRegistration: client?.stateRegistration ?? "",
+    licenseNumber: client?.licenseNumber ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -62,7 +67,14 @@ export function ClientForm({ client }: { client?: Client }) {
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Field label="CNPJ" required>
-          <input className="input" value={form.cnpj} onChange={(e) => update("cnpj", e.target.value)} required />
+          <input
+            className="input"
+            value={form.cnpj}
+            onChange={(e) => update("cnpj", maskCnpjInput(e.target.value))}
+            placeholder="00.000.000/0000-00"
+            maxLength={18}
+            required
+          />
         </Field>
         <Field label="Razão social" required>
           <input className="input" value={form.corporateName} onChange={(e) => update("corporateName", e.target.value)} required />
@@ -122,6 +134,21 @@ export function ClientForm({ client }: { client?: Client }) {
               <option value={form.addressCity}>{form.addressCity}</option>
             )}
           </select>
+        </Field>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+        <Field label="Atividade principal">
+          <input className="input" value={form.mainActivity ?? ""} onChange={(e) => update("mainActivity", e.target.value)} />
+        </Field>
+        <Field label="Data do início da atividade">
+          <input type="date" className="input" value={form.activityStartDate ?? ""} onChange={(e) => update("activityStartDate", e.target.value)} />
+        </Field>
+        <Field label="Inscrição estadual">
+          <input className="input" value={form.stateRegistration ?? ""} onChange={(e) => update("stateRegistration", e.target.value)} />
+        </Field>
+        <Field label="Número da licença / certidão">
+          <input className="input" value={form.licenseNumber ?? ""} onChange={(e) => update("licenseNumber", e.target.value)} />
         </Field>
       </div>
 

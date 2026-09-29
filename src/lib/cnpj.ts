@@ -34,3 +34,15 @@ export function formatCnpj(rawValue: string): string {
   if (cnpj.length !== 14) return rawValue;
   return cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
 }
+
+// Aplica a máscara progressivamente enquanto o usuário digita (campo de
+// formulário), sem exigir os 14 dígitos completos.
+export function maskCnpjInput(value: string): string {
+  const digits = cleanDocumentNumber(value).slice(0, 14);
+  let result = digits;
+  if (digits.length > 2) result = `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length > 5) result = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length > 8) result = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  if (digits.length > 12) result = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+  return result;
+}

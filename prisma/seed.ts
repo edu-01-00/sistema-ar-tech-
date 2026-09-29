@@ -485,6 +485,7 @@ async function main() {
     contactIds: clientA.contacts.map((c) => c.id),
     exhibitUnitValue: true,
     useAdditionalCosts: true,
+    exhibitTravelValue: true,
   });
   await prisma.proposal.update({
     where: { id: proposal1.id },
@@ -502,7 +503,7 @@ async function main() {
       travelValuePerKm: 3.5,
       travelOtherCosts: 80,
       paymentMethod: "A_VISTA",
-      paymentTerm: "DIAS_30",
+      paymentDueDays: 30,
       additionalInfo: "Proposta válida por 15 dias. Prazo de execução: 10 dias úteis após aprovação.",
       observationEmissoesAtmosfericas: true,
       observationQualidadeAr: true,
@@ -517,6 +518,7 @@ async function main() {
     contactIds: [clientB.contacts[0].id],
     exhibitUnitValue: false,
     useAdditionalCosts: true,
+    exhibitTravelValue: true,
   });
   await prisma.proposal.update({
     where: { id: proposal2.id },
@@ -529,7 +531,7 @@ async function main() {
       },
       paymentMethod: "PARCELADO",
       installments: 3,
-      paymentTerm: "DIAS_30_60_90",
+      firstInstallmentDueDays: 30,
       additionalInfo: "Medições a serem realizadas em período diurno e noturno.",
       observationRuido: true,
     },
@@ -542,6 +544,7 @@ async function main() {
     contactIds: clientC.contacts.map((c) => c.id),
     exhibitUnitValue: true,
     useAdditionalCosts: false,
+    exhibitTravelValue: true,
   });
   await prisma.proposal.update({
     where: { id: proposal3.id },
@@ -553,6 +556,7 @@ async function main() {
         ],
       },
       paymentMethod: "DEPOSITO_PIX",
+      paymentDueDays: 15,
       additionalInfo: "Cliente solicitou urgência na emissão do laudo.",
     },
   });

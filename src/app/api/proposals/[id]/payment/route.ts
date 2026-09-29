@@ -19,7 +19,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       data: {
         paymentMethod: data.paymentMethod,
         installments: data.paymentMethod === "PARCELADO" ? data.installments : null,
-        paymentTerm: data.paymentTerm ?? null,
+        firstInstallmentDueDays: data.paymentMethod === "PARCELADO" ? (data.firstInstallmentDueDays ?? null) : null,
+        paymentDueDays: data.paymentMethod === "PARCELADO" ? null : (data.paymentDueDays ?? null),
       },
     });
 

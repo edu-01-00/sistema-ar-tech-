@@ -5,8 +5,10 @@ import { writeAuditLog } from "@/lib/audit";
 import { updateProposalCriticalAnalysisSchema } from "@/lib/validations/proposal";
 import { assertProposalEditable } from "@/lib/services/proposal-service";
 
-// Item 32-33: análise crítica/confirmação da proposta. Registra quem
-// confirmou e quando — usado no documento final ("ANALISADO CRITICAMENTE POR").
+// Análise crítica/confirmação da proposta: 4 itens verificados
+// individualmente (não aparecem no PDF). A confirmação geral
+// (criticalAnalysisConfirmed, usada em "ANALISADO CRITICAMENTE POR") só é
+// considerada válida quando os 4 itens estão marcados.
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
     const session = await requirePermission("proposals.manage");
@@ -16,11 +18,29 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (!proposal) throw new ApiError("Proposta não encontrada.", 404);
     assertProposalEditable(proposal.status, proposal.supersededAt);
 
+    const allConfirmed = data.criticalAnalysisReq1 && data.criticalAnalysisReq2 && data.criticalAnalysisReq3 && data.criticalAnalysisReq4;
+
     await prisma.proposal.update({
       where: { id: proposal.id },
-      data: data.criticalAnalysisConfirmed
-        ? { criticalAnalysisConfirmed: true, criticalAnalysisById: session.user.id, criticalAnalysisAt: new Date() }
-        : { criticalAnalysisConfirmed: false, criticalAnalysisById: null, criticalAnalysisAt: null },
+      data: allConfirmed
+        ? {
+            criticalAnalysisReq1: true,
+            criticalAnalysisReq2: true,
+            criticalAnalysisReq3: true,
+            criticalAnalysisReq4: true,
+            criticalAnalysisConfirmed: true,
+            criticalAnalysisById: session.user.id,
+            criticalAnalysisAt: new Date(),
+          }
+        : {
+            criticalAnalysisReq1: data.criticalAnalysisReq1,
+            criticalAnalysisReq2: data.criticalAnalysisReq2,
+            criticalAnalysisReq3: data.criticalAnalysisReq3,
+            criticalAnalysisReq4: data.criticalAnalysisReq4,
+            criticalAnalysisConfirmed: false,
+            criticalAnalysisById: null,
+            criticalAnalysisAt: null,
+          },
     });
 
     await writeAuditLog({
@@ -28,9 +48,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       action: "UPDATE",
       entityType: "Proposal",
       entityId: proposal.id,
-      description: data.criticalAnalysisConfirmed
+      description: allConfirmed
         ? `Análise crítica da proposta ${proposal.code} confirmada.`
-        : `Análise crítica da proposta ${proposal.code} desfeita.`,
+        : `Análise crítica da proposta ${proposal.code} atualizada (pendente).`,
     });
 
     return NextResponse.json({ ok: true });

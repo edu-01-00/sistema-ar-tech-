@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requirePermission, handleApiError, ApiError } from "@/lib/api-helpers";
 import { proposalDetailInclude } from "@/lib/services/proposal-service";
-import { buildProposalHtml } from "@/lib/pdf/proposal-template";
+import { buildProposalHtml, buildProposalFooterTemplate } from "@/lib/pdf/proposal-template";
 import { renderHtmlToPdf } from "@/lib/pdf/render";
 import { buildFileDownloadResponse } from "@/lib/download-response";
 import { getCompanyLogoDataUri } from "@/lib/pdf/logo";
@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     const company = await prisma.company.findFirst();
     const logoDataUri = await getCompanyLogoDataUri(company);
     const html = buildProposalHtml(proposal, company, logoDataUri);
-    const pdfBuffer = await renderHtmlToPdf(html);
+    const pdfBuffer = await renderHtmlToPdf(html, { footerTemplate: buildProposalFooterTemplate() });
 
     return buildFileDownloadResponse(pdfBuffer, `${proposal.code}.pdf`, "application/pdf");
   } catch (error) {

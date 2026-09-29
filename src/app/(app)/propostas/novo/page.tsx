@@ -7,7 +7,7 @@ import type { WizardClient } from "@/components/proposals/types";
 export default async function NovaPropostaPage() {
   await requirePagePermission(["proposals.manage"]);
 
-  const [clientsRaw, technicalTexts, company] = await Promise.all([
+  const [clientsRaw, company] = await Promise.all([
     prisma.client.findMany({
       where: { active: true },
       include: {
@@ -19,7 +19,6 @@ export default async function NovaPropostaPage() {
       },
       orderBy: { corporateName: "asc" },
     }),
-    prisma.technicalText.findMany(),
     prisma.company.findFirst({
       select: { bankName: true, bankAgency: true, bankAccount: true, bankAccountType: true, bankPixKey: true },
     }),
@@ -50,11 +49,7 @@ export default async function NovaPropostaPage() {
   return (
     <div>
       <PageHeader title="Nova Proposta Comercial" />
-      <ProposalWizard
-        clients={clients}
-        technicalTexts={technicalTexts.map((t) => ({ matrix: t.matrix, title: t.title, content: t.content }))}
-        company={company}
-      />
+      <ProposalWizard clients={clients} company={company} />
     </div>
   );
 }

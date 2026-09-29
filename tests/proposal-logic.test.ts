@@ -7,6 +7,7 @@ import {
   computeTravelTotal,
   nextRevisionCode,
   round2,
+  buildPaymentConditionText,
 } from "@/lib/proposal-logic";
 
 describe("formatProposalCode", () => {
@@ -125,5 +126,40 @@ describe("round2", () => {
   it("arredonda para duas casas decimais evitando erros de ponto flutuante", () => {
     expect(round2(0.1 + 0.2)).toBe(0.3);
     expect(round2(19.995)).toBeCloseTo(20, 2);
+  });
+});
+
+describe("buildPaymentConditionText", () => {
+  it("gera texto dinâmico para à vista com os dias informados", () => {
+    const text = buildPaymentConditionText({ paymentMethod: "A_VISTA", paymentDueDays: 30, installments: null, firstInstallmentDueDays: null });
+    expect(text).toBe("Vencimento para 30 dias assim que for finalizado os trabalhos de campo.");
+  });
+
+  it("gera texto dinâmico para boleto/depósito-pix com outro número de dias", () => {
+    expect(buildPaymentConditionText({ paymentMethod: "BOLETO", paymentDueDays: 45, installments: null, firstInstallmentDueDays: null })).toContain("45 dias");
+    expect(buildPaymentConditionText({ paymentMethod: "DEPOSITO_PIX", paymentDueDays: 15, installments: null, firstInstallmentDueDays: null })).toContain("15 dias");
+  });
+
+  it("retorna null quando os dias não foram informados", () => {
+    expect(buildPaymentConditionText({ paymentMethod: "A_VISTA", paymentDueDays: null, installments: null, firstInstallmentDueDays: null })).toBeNull();
+  });
+
+  it("gera sequência de vencimentos de 30 em 30 dias para parcelado", () => {
+    const text = buildPaymentConditionText({ paymentMethod: "PARCELADO", paymentDueDays: null, installments: 4, firstInstallmentDueDays: 15 });
+    expect(text).toBe("Vencimento da 1ª parcela em 15 dias e as demais em 45/75/105 dias, após a finalização dos trabalhos de campo.");
+  });
+
+  it("gera texto correto quando a 1ª parcela vence em 30 dias", () => {
+    const text = buildPaymentConditionText({ paymentMethod: "PARCELADO", paymentDueDays: null, installments: 2, firstInstallmentDueDays: 30 });
+    expect(text).toBe("Vencimento da 1ª parcela em 30 dias e as demais em 60 dias, após a finalização dos trabalhos de campo.");
+  });
+
+  it("retorna null para parcelado sem os dados necessários", () => {
+    expect(buildPaymentConditionText({ paymentMethod: "PARCELADO", paymentDueDays: null, installments: null, firstInstallmentDueDays: 15 })).toBeNull();
+    expect(buildPaymentConditionText({ paymentMethod: "PARCELADO", paymentDueDays: null, installments: 3, firstInstallmentDueDays: null })).toBeNull();
+  });
+
+  it("retorna null quando a forma de pagamento não foi definida", () => {
+    expect(buildPaymentConditionText({ paymentMethod: null, paymentDueDays: 30, installments: null, firstInstallmentDueDays: null })).toBeNull();
   });
 });

@@ -95,3 +95,33 @@ export function nextRevisionCode(sequenceNumber: number, year: number, currentRe
   const revision = currentRevision + 1;
   return { revision, code: formatProposalCode(sequenceNumber, year, revision) };
 }
+
+// Texto automático da forma de pagamento (item 19 do documento de ajustes):
+// gerado dinamicamente a partir dos dias informados, em vez de um texto fixo
+// pré-selecionado. Para pagamento parcelado, a 1ª parcela vence em 15 ou 30
+// dias e as demais vencem a cada 30 dias a partir dela.
+export function buildPaymentConditionText(params: {
+  paymentMethod: string | null | undefined;
+  paymentDueDays: number | null | undefined;
+  installments: number | null | undefined;
+  firstInstallmentDueDays: number | null | undefined;
+}): string | null {
+  const { paymentMethod, paymentDueDays, installments, firstInstallmentDueDays } = params;
+
+  if (paymentMethod === "PARCELADO") {
+    if (!firstInstallmentDueDays || !installments || installments < 1) return null;
+    const dueDays = Array.from({ length: installments }, (_, i) => firstInstallmentDueDays + i * 30);
+    const [first, ...rest] = dueDays;
+    if (rest.length === 0) {
+      return `Vencimento da 1ª parcela em ${first} dias após a finalização dos trabalhos de campo.`;
+    }
+    return `Vencimento da 1ª parcela em ${first} dias e as demais em ${rest.join("/")} dias, após a finalização dos trabalhos de campo.`;
+  }
+
+  if (paymentMethod === "A_VISTA" || paymentMethod === "BOLETO" || paymentMethod === "DEPOSITO_PIX") {
+    if (!paymentDueDays) return null;
+    return `Vencimento para ${paymentDueDays} dias assim que for finalizado os trabalhos de campo.`;
+  }
+
+  return null;
+}

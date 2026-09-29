@@ -11,6 +11,7 @@ export const createProposalSchema = z.object({
   // Item 15-16: escolhidos no início da criação da proposta.
   exhibitUnitValue: z.boolean().default(true),
   useAdditionalCosts: z.boolean().default(true),
+  exhibitTravelValue: z.boolean().default(true),
 });
 export type CreateProposalInput = z.infer<typeof createProposalSchema>;
 
@@ -48,11 +49,19 @@ export const updateProposalCostsSchema = z.object({
   costs: z.array(proposalCostItemSchema).default([]),
 });
 
+export const FIRST_INSTALLMENT_DUE_DAYS_VALUES = [15, 30] as const;
+
 export const updateProposalPaymentSchema = z
   .object({
     paymentMethod: z.enum(PAYMENT_METHOD_VALUES),
     installments: z.coerce.number().int().min(2).max(60).optional().nullable(),
-    paymentTerm: z.enum(PAYMENT_TERM_VALUES).optional().nullable(),
+    // Dias para vencimento (à vista/boleto/depósito-pix) — texto gerado dinamicamente.
+    paymentDueDays: z.coerce.number().int().min(1, "Informe um número de dias válido.").max(365).optional().nullable(),
+    // Vencimento da 1ª parcela (parcelado): 15 ou 30 dias; as demais vencem a cada 30 dias.
+    firstInstallmentDueDays: z
+      .union([z.literal(15), z.literal(30)])
+      .optional()
+      .nullable(),
   })
   .refine((data) => data.paymentMethod !== "PARCELADO" || (data.installments ?? 0) >= 2, {
     message: "Informe a quantidade de parcelas (mínimo 2).",
@@ -62,6 +71,7 @@ export const updateProposalPaymentSchema = z
 export const updateProposalDisplayOptionsSchema = z.object({
   exhibitUnitValue: z.boolean(),
   useAdditionalCosts: z.boolean(),
+  exhibitTravelValue: z.boolean(),
 });
 
 export const updateProposalObservationsSchema = z.object({
@@ -71,7 +81,10 @@ export const updateProposalObservationsSchema = z.object({
 });
 
 export const updateProposalCriticalAnalysisSchema = z.object({
-  criticalAnalysisConfirmed: z.boolean(),
+  criticalAnalysisReq1: z.boolean(),
+  criticalAnalysisReq2: z.boolean(),
+  criticalAnalysisReq3: z.boolean(),
+  criticalAnalysisReq4: z.boolean(),
 });
 
 export const updateProposalTextsSchema = z.object({

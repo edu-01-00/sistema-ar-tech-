@@ -52,6 +52,10 @@ export async function POST(request: NextRequest) {
         addressCity: data.addressCity || null,
         addressState: data.addressState || null,
         addressZipCode: data.addressZipCode || null,
+        mainActivity: data.mainActivity || null,
+        activityStartDate: data.activityStartDate ? new Date(data.activityStartDate) : null,
+        stateRegistration: data.stateRegistration || null,
+        licenseNumber: data.licenseNumber || null,
       },
     });
 

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MATRIX_LABELS, formatCurrency } from "@/lib/format";
-import type { WizardClient, WizardCompany, WizardTechnicalText } from "./types";
+import { buildPaymentConditionText } from "@/lib/proposal-logic";
+import type { WizardClient, WizardCompany } from "./types";
 
 const STEPS = [
   "Dados gerais",
@@ -11,7 +12,6 @@ const STEPS = [
   "Ensaios",
   "Custos",
   "Pagamento",
-  "Texto técnico",
   "Informações adicionais",
   "Observações importantes",
   "Revisão",
@@ -58,11 +58,9 @@ interface ProposalSummary {
 
 export function ProposalWizard({
   clients,
-  technicalTexts,
   company,
 }: {
   clients: WizardClient[];
-  technicalTexts: WizardTechnicalText[];
   company: WizardCompany | null;
 }) {
   const router = useRouter();
@@ -78,14 +76,15 @@ export function ProposalWizard({
   const [contactIds, setContactIds] = useState<string[]>([]);
   const [exhibitUnitValue, setExhibitUnitValue] = useState(true);
   const [useAdditionalCosts, setUseAdditionalCosts] = useState(true);
+  const [exhibitTravelValue, setExhibitTravelValue] = useState(true);
   const [collectionPointIds, setCollectionPointIds] = useState<string[]>([]);
   const [testRows, setTestRows] = useState<TestRow[]>([]);
   const [travel, setTravel] = useState({ travelDistanceKm: "", travelValuePerKm: "", travelOtherCosts: "" });
   const [costs, setCosts] = useState<CostRow[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"A_VISTA" | "PARCELADO" | "BOLETO" | "DEPOSITO_PIX">("A_VISTA");
   const [installments, setInstallments] = useState(2);
-  const [paymentTerm, setPaymentTerm] = useState<"" | "DIAS_15" | "DIAS_30" | "DIAS_15_30" | "DIAS_30_60_90">("");
-  const [texts, setTexts] = useState<Record<string, string>>({});
+  const [paymentDueDays, setPaymentDueDays] = useState(30);
+  const [firstInstallmentDueDays, setFirstInstallmentDueDays] = useState<15 | 30>(30);
   const [additionalInfo, setAdditionalInfo] = useState("");
   const [observations, setObservations] = useState({
     observationEmissoesAtmosfericas: false,
@@ -130,7 +129,7 @@ export function ProposalWizard({
       setError("Selecione o cliente e ao menos uma matriz.");
       return;
     }
-    const data = await callApi("/api/proposals", "POST", { clientId, matrices, contactIds, exhibitUnitValue, useAdditionalCosts });
+    const data = await callApi("/api/proposals", "POST", { clientId, matrices, contactIds, exhibitUnitValue, useAdditionalCosts, exhibitTravelValue });
     if (!data) return;
     setProposalId(data.proposal.id);
     setProposalCode(data.proposal.code);
@@ -201,41 +200,30 @@ export function ProposalWizard({
     const data = await callApi(`/api/proposals/${proposalId}/payment`, "PATCH", {
       paymentMethod,
       installments: paymentMethod === "PARCELADO" ? installments : undefined,
-      paymentTerm: paymentTerm || undefined,
+      firstInstallmentDueDays: paymentMethod === "PARCELADO" ? firstInstallmentDueDays : undefined,
+      paymentDueDays: paymentMethod === "PARCELADO" ? undefined : paymentDueDays,
     });
     if (!data) return;
-    const initialTexts: Record<string, string> = {};
-    for (const m of matrices) {
-      initialTexts[m] = technicalTexts.find((t) => t.matrix === m)?.content ?? "";
-    }
-    setTexts(initialTexts);
     setStep(6);
   }
 
   async function handleStep6Submit() {
-    const payload = { texts: matrices.map((m) => ({ matrix: m, content: texts[m] ?? "" })) };
-    const data = await callApi(`/api/proposals/${proposalId}/texts`, "PATCH", payload);
+    const data = await callApi(`/api/proposals/${proposalId}/additional-info`, "PATCH", { additionalInfo });
     if (!data) return;
     setStep(7);
   }
 
   async function handleStep7Submit() {
-    const data = await callApi(`/api/proposals/${proposalId}/additional-info`, "PATCH", { additionalInfo });
-    if (!data) return;
-    setStep(8);
-  }
-
-  async function handleStep8Submit() {
     const data = await callApi(`/api/proposals/${proposalId}/observations`, "PATCH", observations);
     if (!data) return;
     const full = await callApi(`/api/proposals/${proposalId}`, "GET");
     if (!full) return;
     setSummary(full.proposal);
-    setStep(9);
+    setStep(8);
   }
 
   function goToGenerate() {
-    setStep(10);
+    setStep(9);
   }
 
   async function handleSendProposal() {
@@ -328,6 +316,18 @@ export function ProposalWizard({
                 </label>
               </div>
               <p className="text-xs text-gray-400 mt-1">Se &quot;Não&quot;, o total considera apenas os ensaios.</p>
+            </div>
+            <div>
+              <label className="label">Exibir valor de deslocamento no documento?</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={exhibitTravelValue} onChange={() => setExhibitTravelValue(true)} /> Sim
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={!exhibitTravelValue} onChange={() => setExhibitTravelValue(false)} /> Não
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">O valor de deslocamento é sempre somado ao total, mesmo quando oculto no documento.</p>
             </div>
           </div>
 
@@ -486,10 +486,7 @@ export function ProposalWizard({
                   <input
                     type="radio"
                     checked={paymentMethod === value}
-                    onChange={() => {
-                      setPaymentMethod(value as typeof paymentMethod);
-                      setPaymentTerm("");
-                    }}
+                    onChange={() => setPaymentMethod(value as typeof paymentMethod)}
                   />
                   {label}
                 </label>
@@ -497,28 +494,36 @@ export function ProposalWizard({
             </div>
           </div>
 
-          {paymentMethod === "PARCELADO" && (
+          {paymentMethod === "PARCELADO" ? (
+            <>
+              <div>
+                <label className="label">Quantidade de parcelas</label>
+                <input type="number" min={2} max={60} className="input w-32" value={installments} onChange={(e) => setInstallments(Number(e.target.value) || 2)} />
+              </div>
+              <div>
+                <label className="label">Vencimento da 1ª parcela</label>
+                <select
+                  className="input w-32"
+                  value={firstInstallmentDueDays}
+                  onChange={(e) => setFirstInstallmentDueDays(Number(e.target.value) === 15 ? 15 : 30)}
+                >
+                  <option value={15}>15 dias</option>
+                  <option value={30}>30 dias</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">As demais parcelas vencem a cada 30 dias a partir da 1ª.</p>
+              </div>
+            </>
+          ) : (
             <div>
-              <label className="label">Quantidade de parcelas</label>
-              <input type="number" min={2} max={60} className="input w-32" value={installments} onChange={(e) => setInstallments(Number(e.target.value) || 2)} />
+              <label className="label">Dias para vencimento</label>
+              <input type="number" min={1} max={365} className="input w-32" value={paymentDueDays} onChange={(e) => setPaymentDueDays(Number(e.target.value) || 1)} />
             </div>
           )}
 
-          <div>
-            <label className="label">Prazo de vencimento</label>
-            <select className="input" value={paymentTerm} onChange={(e) => setPaymentTerm(e.target.value as typeof paymentTerm)}>
-              <option value="">Não informado</option>
-              {paymentMethod === "PARCELADO" ? (
-                <option value="DIAS_30_60_90">30/60/90 dias</option>
-              ) : (
-                <>
-                  <option value="DIAS_15">15 dias</option>
-                  <option value="DIAS_30">30 dias</option>
-                  <option value="DIAS_15_30">15/30 dias (dividido)</option>
-                </>
-              )}
-            </select>
-          </div>
+          {(() => {
+            const previewText = buildPaymentConditionText({ paymentMethod, paymentDueDays, installments, firstInstallmentDueDays });
+            return previewText ? <p className="text-xs text-gray-500 italic">&quot;{previewText}&quot;</p> : null;
+          })()}
 
           {paymentMethod === "DEPOSITO_PIX" && (
             <div className="rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800 px-3 py-2">
@@ -546,13 +551,9 @@ export function ProposalWizard({
       )}
 
       {step === 6 && (
-        <div className="card p-5 space-y-4 max-w-3xl">
-          {matrices.map((m) => (
-            <div key={m}>
-              <label className="label">{MATRIX_LABELS[m]}</label>
-              <textarea className="input" rows={4} value={texts[m] ?? ""} onChange={(e) => setTexts((t) => ({ ...t, [m]: e.target.value }))} />
-            </div>
-          ))}
+        <div className="card p-5 space-y-4 max-w-2xl">
+          <label className="label">Informações adicionais</label>
+          <textarea className="input" rows={5} value={additionalInfo} onChange={(e) => setAdditionalInfo(e.target.value)} placeholder="Texto livre para observações específicas desta proposta." />
           <div className="flex gap-2">
             <button onClick={() => setStep(5)} className="btn-secondary">Voltar</button>
             <button onClick={handleStep6Submit} disabled={saving} className="btn-primary">
@@ -563,19 +564,6 @@ export function ProposalWizard({
       )}
 
       {step === 7 && (
-        <div className="card p-5 space-y-4 max-w-2xl">
-          <label className="label">Informações adicionais</label>
-          <textarea className="input" rows={5} value={additionalInfo} onChange={(e) => setAdditionalInfo(e.target.value)} placeholder="Texto livre para observações específicas desta proposta." />
-          <div className="flex gap-2">
-            <button onClick={() => setStep(6)} className="btn-secondary">Voltar</button>
-            <button onClick={handleStep7Submit} disabled={saving} className="btn-primary">
-              {saving ? "Salvando..." : "Avançar"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 8 && (
         <div className="card p-5 space-y-4 max-w-2xl">
           <p className="text-sm text-gray-600">Selecione quais blocos de observações importantes devem aparecer no documento (nenhum, um, dois ou os três).</p>
           <label className="flex items-center gap-2 text-sm border border-gray-200 rounded-md px-3 py-2">
@@ -603,15 +591,15 @@ export function ProposalWizard({
             Avaliação de Pressão Sonora (Ruído)
           </label>
           <div className="flex gap-2">
-            <button onClick={() => setStep(7)} className="btn-secondary">Voltar</button>
-            <button onClick={handleStep8Submit} disabled={saving} className="btn-primary">
+            <button onClick={() => setStep(6)} className="btn-secondary">Voltar</button>
+            <button onClick={handleStep7Submit} disabled={saving} className="btn-primary">
               {saving ? "Salvando..." : "Avançar"}
             </button>
           </div>
         </div>
       )}
 
-      {step === 9 && summary && (
+      {step === 8 && summary && (
         <div className="card p-5 space-y-4 max-w-3xl">
           <h3 className="text-sm font-semibold text-gray-800">Resumo da proposta {summary.code}</h3>
           <p className="text-sm">Cliente: <strong>{summary.client.corporateName}</strong></p>
@@ -623,13 +611,13 @@ export function ProposalWizard({
           <p className="text-sm font-semibold">Valor total: {formatCurrency(Number(summary.totalValue))}</p>
           <p className="text-sm">Pagamento: {summary.paymentMethod ? PAYMENT_METHOD_LABELS[summary.paymentMethod] : "Não definido"}{summary.paymentMethod === "PARCELADO" ? ` em ${summary.installments}x` : ""}</p>
           <div className="flex gap-2">
-            <button onClick={() => setStep(8)} className="btn-secondary">Voltar</button>
+            <button onClick={() => setStep(7)} className="btn-secondary">Voltar</button>
             <button onClick={goToGenerate} className="btn-primary">Avançar</button>
           </div>
         </div>
       )}
 
-      {step === 10 && (
+      {step === 9 && (
         <div className="card p-5 space-y-4 max-w-2xl">
           <p className="text-sm text-gray-600">A proposta {proposalCode} foi salva com sucesso. Gere o documento para conferência e envio ao cliente.</p>
           <p className="text-xs text-gray-500">A análise crítica pode ser confirmada na página da proposta antes do envio.</p>

@@ -14,6 +14,10 @@ export const clientSchema = z.object({
   addressCity: z.string().trim().optional().nullable(),
   addressState: z.string().trim().max(2).optional().nullable(),
   addressZipCode: z.string().trim().optional().nullable(),
+  mainActivity: z.string().trim().optional().nullable(),
+  activityStartDate: z.string().trim().optional().nullable(),
+  stateRegistration: z.string().trim().optional().nullable(),
+  licenseNumber: z.string().trim().optional().nullable(),
 });
 
 export type ClientInput = z.infer<typeof clientSchema>;
