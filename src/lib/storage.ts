@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { put, del, get } from "@vercel/blob";
 
 // Abstração de armazenamento de arquivos. A implementação padrão grava em
 // disco local (pasta configurada em STORAGE_LOCAL_PATH), mas a interface
@@ -62,16 +63,44 @@ class LocalStorageDriver implements StorageDriver {
   }
 }
 
+// Em ambiente serverless (Vercel) o disco local (incluindo /tmp) não é
+// persistente: cada novo deploy — e cada instância de função — parte de um
+// filesystem limpo, então qualquer arquivo salvo com o LocalStorageDriver
+// desaparece. O Vercel Blob mantém os arquivos entre deploys e instâncias.
+class VercelBlobStorageDriver implements StorageDriver {
+  async save(params: { category: string; fileName: string; buffer: Buffer }): Promise<string> {
+    const category = sanitizeCategory(params.category);
+    const fileName = sanitizeFileName(params.fileName);
+    const pathname = `${category}/${randomUUID()}-${fileName}`;
+    await put(pathname, params.buffer, { access: "private", addRandomSuffix: false });
+    return pathname;
+  }
+
+  async read(storageKey: string): Promise<Buffer> {
+    const result = await get(storageKey, { access: "private" });
+    if (!result) throw new Error("Arquivo não encontrado no armazenamento.");
+    const arrayBuffer = await new Response(result.stream).arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  async remove(storageKey: string): Promise<void> {
+    await del(storageKey);
+  }
+}
+
 let driver: StorageDriver | null = null;
 
 export function getStorageDriver(): StorageDriver {
   if (!driver) {
     const configuredDriver = process.env.STORAGE_DRIVER ?? "local";
-    if (configuredDriver !== "local") {
+    if (configuredDriver === "vercel-blob") {
+      driver = new VercelBlobStorageDriver();
+    } else if (configuredDriver === "local") {
+      const root = path.resolve(process.cwd(), process.env.STORAGE_LOCAL_PATH ?? "./storage");
+      driver = new LocalStorageDriver(root);
+    } else {
       throw new Error(`Driver de armazenamento "${configuredDriver}" não implementado.`);
     }
-    const root = path.resolve(process.cwd(), process.env.STORAGE_LOCAL_PATH ?? "./storage");
-    driver = new LocalStorageDriver(root);
   }
   return driver;
 }
