@@ -81,6 +81,7 @@ export function ProposalWizard({
   const [testRows, setTestRows] = useState<TestRow[]>([]);
   const [travel, setTravel] = useState({ travelDistanceKm: "", travelValuePerKm: "", travelOtherCosts: "" });
   const [costs, setCosts] = useState<CostRow[]>([]);
+  const [discountPercent, setDiscountPercent] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<"A_VISTA" | "PARCELADO" | "BOLETO" | "DEPOSITO_PIX">("A_VISTA");
   const [installments, setInstallments] = useState(2);
   const [paymentDueDays, setPaymentDueDays] = useState(30);
@@ -186,6 +187,7 @@ export function ProposalWizard({
       travelValuePerKm: travel.travelValuePerKm ? Number(travel.travelValuePerKm) : null,
       travelOtherCosts: travel.travelOtherCosts ? Number(travel.travelOtherCosts) : null,
       costs,
+      discountPercent,
     };
     const data = await callApi(`/api/proposals/${proposalId}/costs`, "PATCH", payload);
     if (!data) return;
@@ -306,7 +308,7 @@ export function ProposalWizard({
               <p className="text-xs text-gray-400 mt-1">Os valores são sempre usados no cálculo do total, mesmo quando ocultos no documento.</p>
             </div>
             <div>
-              <label className="label">Utilizar custos adicionais?</label>
+              <label className="label">Demonstrar custo adicional na proposta?</label>
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <input type="radio" checked={useAdditionalCosts} onChange={() => setUseAdditionalCosts(true)} /> Sim
@@ -315,7 +317,10 @@ export function ProposalWizard({
                   <input type="radio" checked={!useAdditionalCosts} onChange={() => setUseAdditionalCosts(false)} /> Não
                 </label>
               </div>
-              <p className="text-xs text-gray-400 mt-1">Se &quot;Não&quot;, o total considera apenas os ensaios.</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Se &quot;Não&quot;, o custo adicional é distribuído proporcionalmente nos pontos de coleta em vez de aparecer como linha separada. O total
+                sempre inclui o custo adicional.
+              </p>
             </div>
             <div>
               <label className="label">Exibir valor de deslocamento no documento?</label>
@@ -465,6 +470,23 @@ export function ProposalWizard({
                 <button className="btn-danger text-xs" onClick={() => setCosts((rows) => rows.filter((_, i) => i !== idx))}>Remover</button>
               </div>
             ))}
+          </div>
+
+          <div>
+            <label className="label">Desconto</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                className="input w-24"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+              />
+              <span className="text-sm text-gray-600">%</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Aplicado sobre o valor total da proposta (ensaios + custos adicionais + deslocamento).</p>
           </div>
 
           <div className="flex gap-2">

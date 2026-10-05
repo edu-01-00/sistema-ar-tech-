@@ -67,7 +67,7 @@ export async function recalculateProposalTotals(tx: TxClient, proposalId: string
       valuePerKm: proposal.travelValuePerKm ? Number(proposal.travelValuePerKm) : null,
       otherCosts: proposal.travelOtherCosts ? Number(proposal.travelOtherCosts) : null,
     },
-    useAdditionalCosts: proposal.useAdditionalCosts,
+    discountPercent: Number(proposal.discountPercent),
   });
 
   await tx.proposal.update({
@@ -76,6 +76,7 @@ export async function recalculateProposalTotals(tx: TxClient, proposalId: string
       testsTotal: totals.testsTotal,
       otherCostsTotal: totals.otherCostsTotal,
       travelTotalValue: totals.travelTotal,
+      discountValue: totals.discountValue,
       totalValue: totals.totalValue,
     },
   });
@@ -216,6 +217,8 @@ export async function createProposalRevision(userId: string, proposalId: string)
         travelTotalValue: current.travelTotalValue,
         testsTotal: current.testsTotal,
         otherCostsTotal: current.otherCostsTotal,
+        discountPercent: current.discountPercent,
+        discountValue: current.discountValue,
         totalValue: current.totalValue,
         matrices: { create: current.matrices.map((m) => ({ matrix: m.matrix })) },
         contacts: { create: current.contacts.map((c) => ({ clientContactId: c.clientContactId })) },

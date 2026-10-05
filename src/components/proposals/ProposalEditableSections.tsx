@@ -183,10 +183,12 @@ export function CostsSection({
   proposalId,
   initialTravel,
   initialCosts,
+  initialDiscountPercent,
 }: {
   proposalId: string;
   initialTravel: { travelDistanceKm: number | null; travelValuePerKm: number | null; travelOtherCosts: number | null };
   initialCosts: { description: string; value: number; type: "ART" | "OUTRO" }[];
+  initialDiscountPercent: number;
 }) {
   const router = useRouter();
   const [travel, setTravel] = useState({
@@ -195,6 +197,7 @@ export function CostsSection({
     travelOtherCosts: initialTravel.travelOtherCosts?.toString() ?? "",
   });
   const [costs, setCosts] = useState(initialCosts);
+  const [discountPercent, setDiscountPercent] = useState(initialDiscountPercent);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -231,8 +234,25 @@ export function CostsSection({
         </div>
       ))}
 
+      <div className="border-t border-gray-100 mt-4 pt-4">
+        <label className="label">Desconto</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            className="input w-24"
+            value={discountPercent}
+            onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+          />
+          <span className="text-sm text-gray-600">%</span>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">Aplicado sobre o valor total da proposta (ensaios + custos adicionais + deslocamento).</p>
+      </div>
+
       <button
-        className="btn-primary text-xs mt-2"
+        className="btn-primary text-xs mt-4"
         disabled={saving}
         onClick={() =>
           saveSection(
@@ -242,6 +262,7 @@ export function CostsSection({
               travelValuePerKm: travel.travelValuePerKm ? Number(travel.travelValuePerKm) : null,
               travelOtherCosts: travel.travelOtherCosts ? Number(travel.travelOtherCosts) : null,
               costs,
+              discountPercent,
             },
             router,
             setError,
@@ -423,7 +444,7 @@ export function DisplayOptionsSection({
         </div>
       </div>
       <div className="mb-3">
-        <label className="label">Utilizar custos adicionais?</label>
+        <label className="label">Demonstrar custo adicional na proposta?</label>
         <div className="flex gap-4">
           <label className="flex items-center gap-2 text-sm">
             <input type="radio" checked={useAdditionalCosts} onChange={() => setUseAdditionalCosts(true)} /> Sim
@@ -432,6 +453,10 @@ export function DisplayOptionsSection({
             <input type="radio" checked={!useAdditionalCosts} onChange={() => setUseAdditionalCosts(false)} /> Não
           </label>
         </div>
+        <p className="text-xs text-gray-400 mt-1">
+          Se &quot;Não&quot;, o custo adicional não aparece como linha separada — é distribuído proporcionalmente nos valores dos pontos de coleta. O valor
+          total da proposta sempre inclui o custo adicional, exibido ou não.
+        </p>
       </div>
       <div className="mb-3">
         <label className="label">Exibir valor de deslocamento no documento?</label>

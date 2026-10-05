@@ -21,6 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           travelDistanceKm: data.travelDistanceKm ?? null,
           travelValuePerKm: data.travelValuePerKm ?? null,
           travelOtherCosts: data.travelOtherCosts ?? null,
+          discountPercent: data.discountPercent,
         },
       });
       await tx.proposalCost.deleteMany({ where: { proposalId: proposal.id } });

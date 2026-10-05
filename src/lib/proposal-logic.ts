@@ -65,27 +65,92 @@ export function computeOtherCostsTotal(costs: ProposalCostLine[]): number {
   return round2(costs.reduce((acc, c) => acc + c.value, 0));
 }
 
-// `useAdditionalCosts` (item 16 do requisito): quando falso, o valor total da
-// proposta considera SOMENTE o total de ensaios — outros custos e
-// deslocamento continuam calculados (para exibição futura, se reativado),
-// mas não entram na soma final. O cálculo do total de ensaios em si nunca
-// muda, independente desta opção.
+// Custo adicional (ProposalCost) e deslocamento SEMPRE compõem o valor-base
+// da proposta, independente das opções `useAdditionalCosts`/
+// `exhibitTravelValue` — essas opções controlam apenas a FORMA de
+// apresentação (linha separada, ou distribuído/omitido), nunca o cálculo do
+// total (item 4, 5 e 8 do requisito de desconto/custo adicional: "o total
+// final da proposta deve continuar incluindo 100% do custo adicional").
+// O desconto percentual é aplicado sobre esse valor-base único — nunca
+// sobre um valor que já exclua custos que fazem parte da proposta.
 export function computeProposalTotal(params: {
   tests: ProposalTestLine[];
   costs: ProposalCostLine[];
   travel: ProposalTravelInput | null | undefined;
-  useAdditionalCosts?: boolean;
-}): { testsTotal: number; otherCostsTotal: number; travelTotal: number; totalValue: number } {
+  discountPercent?: number | null;
+}): {
+  testsTotal: number;
+  otherCostsTotal: number;
+  travelTotal: number;
+  baseValue: number;
+  discountValue: number;
+  totalValue: number;
+} {
   const testsTotal = computeTestsTotal(params.tests);
   const otherCostsTotal = computeOtherCostsTotal(params.costs);
   const travelTotal = computeTravelTotal(params.travel);
-  const useAdditionalCosts = params.useAdditionalCosts ?? true;
-  const totalValue = round2(useAdditionalCosts ? testsTotal + otherCostsTotal + travelTotal : testsTotal);
-  return { testsTotal, otherCostsTotal, travelTotal, totalValue };
+  const baseValue = round2(testsTotal + otherCostsTotal + travelTotal);
+  const discountPercent = params.discountPercent ?? 0;
+  const discountValue = round2((baseValue * discountPercent) / 100);
+  const totalValue = round2(baseValue - discountValue);
+  return { testsTotal, otherCostsTotal, travelTotal, baseValue, discountValue, totalValue };
 }
 
 export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+// Distribui um valor igualmente entre `count` itens sem perder centavos por
+// arredondamento (item 7 do requisito de custo adicional): trabalha em
+// centavos inteiros e ajusta a diferença de arredondamento sempre no último
+// item, garantindo que a soma das parcelas seja EXATAMENTE igual ao valor
+// original.
+export function distributeAmountEqually(totalValue: number, count: number): number[] {
+  if (count <= 0 || totalValue === 0) return [];
+  const totalCents = Math.round(totalValue * 100);
+  const baseCents = Math.floor(totalCents / count);
+  const remainderCents = totalCents - baseCents * count;
+  const shares = Array.from({ length: count }, () => baseCents);
+  shares[count - 1] += remainderCents;
+  return shares.map((cents) => cents / 100);
+}
+
+export interface PointSubtotalInput {
+  key: string;
+  testsSubtotal: number;
+}
+
+export interface PointDisplaySubtotal {
+  key: string;
+  displaySubtotal: number;
+}
+
+// Centraliza a regra de exibição do custo adicional (item 4-7 do requisito):
+// quando `distributeOtherCosts` é falso ("demonstrar custo adicional"), cada
+// ponto mostra apenas o seu próprio subtotal de ensaios, e o custo aparece
+// como linha separada. Quando verdadeiro ("NÃO demonstrar"), o valor de
+// `otherCostsTotal` é distribuído igualmente entre os pontos e incorporado
+// ao subtotal exibido de cada um — o custo nunca desaparece do total, só
+// muda a forma de apresentação.
+export function computePointDisplaySubtotals(params: {
+  points: PointSubtotalInput[];
+  otherCostsTotal: number;
+  distributeOtherCosts: boolean;
+}): PointDisplaySubtotal[] {
+  const { points, otherCostsTotal, distributeOtherCosts } = params;
+  if (!distributeOtherCosts || points.length === 0 || otherCostsTotal === 0) {
+    return points.map((p) => ({ key: p.key, displaySubtotal: p.testsSubtotal }));
+  }
+  const shares = distributeAmountEqually(otherCostsTotal, points.length);
+  return points.map((p, i) => ({ key: p.key, displaySubtotal: round2(p.testsSubtotal + shares[i]) }));
+}
+
+// "Total de ensaios" exibido no Resumo Comercial: sempre a soma exata dos
+// subtotais exibidos por ponto, para que a linha de total nunca destoe das
+// linhas individuais (item 15: fonte única de cálculo reutilizada em todas
+// as telas e no PDF).
+export function sumDisplaySubtotals(subtotals: PointDisplaySubtotal[]): number {
+  return round2(subtotals.reduce((acc, s) => acc + s.displaySubtotal, 0));
 }
 
 export function nextRevisionCode(sequenceNumber: number, year: number, currentRevision: number): {

@@ -678,6 +678,12 @@ model Proposal {
 
   testsTotal      Decimal @default(0) @db.Decimal(12, 2)
   otherCostsTotal Decimal @default(0) @db.Decimal(12, 2)
+  // Desconto percentual aplicado sobre o valor-base da proposta (ensaios +
+  // custos adicionais + deslocamento, sempre — item 8 do requisito de
+  // desconto). discountValue é o valor calculado e persistido, no mesmo
+  // padrão já usado para os demais totais (recalculado a cada alteração).
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  discountValue   Decimal @default(0) @db.Decimal(12, 2)
   totalValue      Decimal @default(0) @db.Decimal(12, 2)
 
   createdById String

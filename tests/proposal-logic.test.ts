@@ -8,6 +8,9 @@ import {
   nextRevisionCode,
   round2,
   buildPaymentConditionText,
+  distributeAmountEqually,
+  computePointDisplaySubtotals,
+  sumDisplaySubtotals,
 } from "@/lib/proposal-logic";
 
 describe("formatProposalCode", () => {
@@ -107,18 +110,124 @@ describe("computeProposalTotal", () => {
     expect(totals.totalValue).toBe(0);
   });
 
-  it("com useAdditionalCosts=false, o total considera somente os ensaios", () => {
+  // Alteração de regra (item 4/5/8 do requisito de desconto/custo
+  // adicional): custo adicional e deslocamento SEMPRE compõem o total,
+  // mesmo quando não demonstrados separadamente — a opção de exibição
+  // (useAdditionalCosts) afeta só a apresentação, nunca o cálculo.
+  it("custo adicional e deslocamento sempre compõem o total, demonstrados ou não", () => {
     const totals = computeProposalTotal({
       tests: [{ quantity: 2, value: 100 }],
       costs: [{ value: 250 }],
       travel: { distanceKm: 30, valuePerKm: 2.5, otherCosts: 0 },
-      useAdditionalCosts: false,
     });
 
     expect(totals.testsTotal).toBe(200);
     expect(totals.otherCostsTotal).toBe(250);
     expect(totals.travelTotal).toBe(75);
-    expect(totals.totalValue).toBe(200);
+    expect(totals.baseValue).toBe(525);
+    expect(totals.totalValue).toBe(525);
+  });
+
+  it("TESTE 1 (sem desconto): valor final igual ao valor-base", () => {
+    const totals = computeProposalTotal({
+      tests: [{ quantity: 1, value: 2440 }],
+      costs: [],
+      travel: null,
+    });
+    expect(totals.baseValue).toBe(2440);
+    expect(totals.discountValue).toBe(0);
+    expect(totals.totalValue).toBe(2440);
+  });
+
+  it("TESTE 2 (desconto de 3%): desconto e valor final calculados corretamente", () => {
+    const totals = computeProposalTotal({
+      tests: [{ quantity: 1, value: 2440 }],
+      costs: [],
+      travel: null,
+      discountPercent: 3,
+    });
+    expect(totals.baseValue).toBe(2440);
+    expect(totals.discountValue).toBe(73.2);
+    expect(totals.totalValue).toBe(2366.8);
+  });
+
+  it("TESTE 5 (desconto + custo adicional): desconto calculado sobre o valor-base completo", () => {
+    // Custo adicional não demonstrado distribuído nos ensaios (R$1000 + R$800 + R$100 = R$1900 de base),
+    // depois desconto de 3% sobre o valor-base completo (nunca sobre um valor que já exclua o custo).
+    const totals = computeProposalTotal({
+      tests: [
+        { quantity: 1, value: 1000 },
+        { quantity: 1, value: 800 },
+      ],
+      costs: [{ value: 100 }],
+      travel: null,
+      discountPercent: 3,
+    });
+    expect(totals.baseValue).toBe(1900);
+    expect(totals.discountValue).toBe(57);
+    expect(totals.totalValue).toBe(1843);
+  });
+});
+
+describe("distributeAmountEqually", () => {
+  it("TESTE 4 (custo adicional não demonstrado): distribui igualmente entre os pontos", () => {
+    expect(distributeAmountEqually(100, 2)).toEqual([50, 50]);
+  });
+
+  it("TESTE 6 (arredondamento): a soma das parcelas é exatamente igual ao valor original", () => {
+    const shares = distributeAmountEqually(100, 3);
+    expect(shares).toHaveLength(3);
+    const sum = shares.reduce((a, b) => a + b, 0);
+    expect(Math.round(sum * 100) / 100).toBe(100);
+    // 100 / 3 = 33.33... -> 33.33 + 33.33 + 33.34 (ajuste no último item)
+    expect(shares[0]).toBe(33.33);
+    expect(shares[1]).toBe(33.33);
+    expect(shares[2]).toBe(33.34);
+  });
+
+  it("retorna lista vazia sem dividir por zero", () => {
+    expect(distributeAmountEqually(100, 0)).toEqual([]);
+    expect(distributeAmountEqually(0, 3)).toEqual([]);
+  });
+});
+
+describe("computePointDisplaySubtotals / sumDisplaySubtotals", () => {
+  it("TESTE 3 (custo adicional demonstrado): subtotal de cada ponto permanece só com os ensaios", () => {
+    const subtotals = computePointDisplaySubtotals({
+      points: [
+        { key: "p1", testsSubtotal: 1000 },
+        { key: "p2", testsSubtotal: 800 },
+      ],
+      otherCostsTotal: 100,
+      distributeOtherCosts: false,
+    });
+    expect(subtotals).toEqual([
+      { key: "p1", displaySubtotal: 1000 },
+      { key: "p2", displaySubtotal: 800 },
+    ]);
+    expect(sumDisplaySubtotals(subtotals)).toBe(1800);
+  });
+
+  it("TESTE 4 (custo adicional não demonstrado): incorpora a distribuição em cada ponto", () => {
+    const subtotals = computePointDisplaySubtotals({
+      points: [
+        { key: "p1", testsSubtotal: 1000 },
+        { key: "p2", testsSubtotal: 800 },
+      ],
+      otherCostsTotal: 100,
+      distributeOtherCosts: true,
+    });
+    expect(subtotals).toEqual([
+      { key: "p1", displaySubtotal: 1050 },
+      { key: "p2", displaySubtotal: 850 },
+    ]);
+    expect(sumDisplaySubtotals(subtotals)).toBe(1900);
+  });
+
+  it("não distribui para lista vazia de pontos", () => {
+    const subtotals = computePointDisplaySubtotals({ points: [], otherCostsTotal: 100, distributeOtherCosts: true });
+    expect(subtotals).toEqual([]);
+    expect(sumDisplaySubtotals(subtotals)).toBe(0);
   });
 });
 

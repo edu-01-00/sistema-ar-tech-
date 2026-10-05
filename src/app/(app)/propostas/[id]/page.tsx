@@ -122,6 +122,11 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
           <p className="text-sm">Ensaios: {formatCurrency(Number(proposal.testsTotal))}</p>
           <p className="text-sm">Deslocamento: {formatCurrency(Number(proposal.travelTotalValue ?? 0))}</p>
           <p className="text-sm">Outros custos: {formatCurrency(Number(proposal.otherCostsTotal))}</p>
+          {Number(proposal.discountPercent) > 0 && (
+            <p className="text-sm">
+              Desconto ({Number(proposal.discountPercent)}%): -{formatCurrency(Number(proposal.discountValue))}
+            </p>
+          )}
           <p className="text-sm font-semibold">Total: {formatCurrency(Number(proposal.totalValue))}</p>
           <p className="text-sm">
             Pagamento: {proposal.paymentMethod ? PAYMENT_METHOD_LABELS[proposal.paymentMethod] : "Não definido"}
@@ -156,6 +161,7 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
               travelOtherCosts: proposal.travelOtherCosts ? Number(proposal.travelOtherCosts) : null,
             }}
             initialCosts={proposal.costs.map((c) => ({ description: c.description, value: Number(c.value), type: c.type }))}
+            initialDiscountPercent={Number(proposal.discountPercent)}
           />
           <PaymentSection
             proposalId={proposal.id}

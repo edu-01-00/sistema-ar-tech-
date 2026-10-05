@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { createProposal, createProposalRevision, changeProposalStatus } from "@/lib/services/proposal-service";
+import { createProposal, createProposalRevision, changeProposalStatus, recalculateProposalTotals } from "@/lib/services/proposal-service";
 import { ApiError } from "@/lib/api-helpers";
 
 // Testes de integração contra o banco de desenvolvimento real (Postgres),
@@ -157,6 +157,61 @@ describe("changeProposalStatus - transições de status", () => {
     createdProposalIds.push(proposal.id);
 
     await expect(changeProposalStatus(userId, proposal.id, "APROVADA")).rejects.toThrow(ApiError);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("recalculateProposalTotals - desconto e custo adicional (persistência real)", () => {
+  it("custo adicional sempre compõe o total e o desconto é calculado sobre o valor-base completo", async () => {
+    vi.setSystemTime(new Date(2098, 6, 1));
+    const proposal = await createProposal(userId, {
+      clientId,
+      matrices: ["QUALIDADE_AR"],
+      contactIds: [],
+      exhibitUnitValue: true,
+      useAdditionalCosts: true,
+      exhibitTravelValue: true,
+    });
+    createdProposalIds.push(proposal.id);
+
+    // Custo adicional de R$ 100,00 (sem ensaios/deslocamento neste cenário) + desconto de 3%.
+    await prisma.proposalCost.create({ data: { proposalId: proposal.id, description: "ART", value: 100, type: "ART" } });
+    await prisma.proposal.update({ where: { id: proposal.id }, data: { discountPercent: 3 } });
+
+    const totals = await prisma.$transaction((tx) => recalculateProposalTotals(tx, proposal.id));
+    expect(totals.otherCostsTotal).toBe(100);
+    expect(totals.baseValue).toBe(100);
+    expect(totals.discountValue).toBe(3);
+    expect(totals.totalValue).toBe(97);
+
+    const persisted = await prisma.proposal.findUniqueOrThrow({ where: { id: proposal.id } });
+    expect(Number(persisted.otherCostsTotal)).toBe(100);
+    expect(Number(persisted.discountValue)).toBe(3);
+    expect(Number(persisted.totalValue)).toBe(97);
+
+    vi.useRealTimers();
+  });
+
+  it("a revisão carrega o desconto e o valor calculado da proposta original (não recalcula do zero)", async () => {
+    vi.setSystemTime(new Date(2098, 6, 2));
+    const proposal = await createProposal(userId, {
+      clientId,
+      matrices: ["QUALIDADE_AR"],
+      contactIds: [],
+      exhibitUnitValue: true,
+      useAdditionalCosts: true,
+      exhibitTravelValue: true,
+    });
+    createdProposalIds.push(proposal.id);
+    await prisma.proposal.update({ where: { id: proposal.id }, data: { discountPercent: 5, discountValue: 10, totalValue: 190 } });
+
+    const revision = await createProposalRevision(userId, proposal.id);
+    createdProposalIds.push(revision.id);
+
+    expect(Number(revision.discountPercent)).toBe(5);
+    expect(Number(revision.discountValue)).toBe(10);
+    expect(Number(revision.totalValue)).toBe(190);
 
     vi.useRealTimers();
   });

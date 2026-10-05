@@ -4,7 +4,7 @@ import { formatCurrency, formatDate, MATRIX_LABELS, PAYMENT_METHOD_LABELS } from
 import { escapeHtml, nl2br } from "@/lib/pdf/html-utils";
 import { BRAZILIAN_STATES } from "@/lib/br-locations";
 import { formatCnpj } from "@/lib/cnpj";
-import { buildPaymentConditionText } from "@/lib/proposal-logic";
+import { buildPaymentConditionText, computePointDisplaySubtotals, sumDisplaySubtotals } from "@/lib/proposal-logic";
 
 type TextSnapshot = ProposalWithDetails["textSnapshots"][number];
 
@@ -123,17 +123,28 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     .join("");
 
   // RESUMO COMERCIAL (antes "Custos"): mostra o valor total de cada ponto de
-  // coleta, seguido (se ativos) dos outros custos, depois o somatório total
-  // dos ensaios, o deslocamento (rótulo simples, sem o cálculo entre
+  // coleta, seguido (se demonstrados) dos outros custos, depois o somatório
+  // total dos ensaios, o deslocamento (rótulo simples, sem o cálculo entre
   // parênteses — exibido apenas se exhibitTravelValue estiver ativo, mas
-  // sempre somado ao valor final, exibido ou não) e por fim o valor total.
-  const pointSubtotalsHtml = proposal.collectionPoints
-    .map(({ collectionPoint }) => {
+  // sempre somado ao valor final, exibido ou não), o desconto (se houver) e
+  // por fim o valor total. Quando o custo adicional NÃO é demonstrado
+  // separadamente, ele é distribuído igualmente entre os pontos e já
+  // aparece incorporado em cada "Valor total — <ponto>" (computePointDisplaySubtotals
+  // é a mesma função usada em todas as telas — fonte única de cálculo).
+  const pointSubtotals = computePointDisplaySubtotals({
+    points: proposal.collectionPoints.map(({ collectionPoint }) => {
       const tests = testsByPoint.get(collectionPoint.id) ?? [];
-      const subtotal = tests.reduce((sum, t) => sum + Number(t.valueSnapshot) * t.quantity, 0);
-      return `<tr><td>Valor total — ${escapeHtml(collectionPoint.name)}</td><td class="text-right">${formatCurrency(subtotal)}</td></tr>`;
-    })
+      const testsSubtotal = tests.reduce((sum, t) => sum + Number(t.valueSnapshot) * t.quantity, 0);
+      return { key: collectionPoint.id, testsSubtotal };
+    }),
+    otherCostsTotal: Number(proposal.otherCostsTotal),
+    distributeOtherCosts: !proposal.useAdditionalCosts,
+  });
+  const pointNameById = new Map(proposal.collectionPoints.map(({ collectionPoint }) => [collectionPoint.id, collectionPoint.name]));
+  const pointSubtotalsHtml = pointSubtotals
+    .map((p) => `<tr><td>Valor total — ${escapeHtml(pointNameById.get(p.key) ?? "")}</td><td class="text-right">${formatCurrency(p.displaySubtotal)}</td></tr>`)
     .join("");
+  const ensaiosDisplayTotal = sumDisplaySubtotals(pointSubtotals);
 
   const costsHtml = proposal.costs
     .map((c) => `<tr><td>${escapeHtml(c.description)}</td><td class="text-right">${formatCurrency(Number(c.value))}</td></tr>`)
@@ -144,14 +155,20 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
       ? `<tr><td>Deslocamento</td><td class="text-right">${formatCurrency(Number(proposal.travelTotalValue))}</td></tr>`
       : "";
 
+  const discountHtml =
+    Number(proposal.discountValue) > 0
+      ? `<tr><td>Valor total de descontos ${Number(proposal.discountPercent)}%</td><td class="text-right">${formatCurrency(Number(proposal.discountValue))}</td></tr>`
+      : "";
+
   const custosSectionHtml = `
     <h2>RESUMO COMERCIAL</h2>
     <table class="totals-table">
       <tbody>
         ${pointSubtotalsHtml}
         ${proposal.useAdditionalCosts ? costsHtml : ""}
-        <tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(Number(proposal.testsTotal))}</td></tr>
+        <tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(ensaiosDisplayTotal)}</td></tr>
         ${travelHtml}
+        ${discountHtml}
         <tr class="grand-total"><td>Valor total da proposta</td><td class="text-right">${formatCurrency(Number(proposal.totalValue))}</td></tr>
       </tbody>
     </table>`;

@@ -47,6 +47,11 @@ export const updateProposalCostsSchema = z.object({
   travelValuePerKm: z.coerce.number().min(0).optional().nullable(),
   travelOtherCosts: z.coerce.number().min(0).optional().nullable(),
   costs: z.array(proposalCostItemSchema).default([]),
+  discountPercent: z.coerce
+    .number()
+    .min(0, "O desconto não pode ser negativo.")
+    .max(100, "O percentual de desconto deve estar entre 0 e 100.")
+    .default(0),
 });
 
 export const FIRST_INSTALLMENT_DUE_DAYS_VALUES = [15, 30] as const;
