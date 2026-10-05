@@ -19,19 +19,22 @@ import {
   ObservationsSection,
   CriticalAnalysisSection,
 } from "@/components/proposals/ProposalEditableSections";
+import { ProductiveProcessesSection } from "@/components/proposals/ProductiveProcessesSection";
 import type { WizardCollectionPoint } from "@/components/proposals/types";
 
 export default async function PropostaDetailPage({ params }: { params: { id: string } }) {
   const session = await requirePagePermission(["proposals.view", "proposals.manage"]);
   const canManage = hasPermission(session.user.permissions, "proposals.manage");
   const canChangeStatus = hasPermission(session.user.permissions, "proposals.status.change");
+  const canManageProductiveProcesses = hasPermission(session.user.permissions, "productive_processes.manage");
 
   const proposal = await prisma.proposal.findUnique({ where: { id: params.id }, include: proposalDetailInclude });
   if (!proposal) notFound();
 
   const isEditable = proposal.status === "EM_ELABORACAO" && !proposal.supersededAt;
+  const isApproved = proposal.status === "APROVADA";
 
-  const [clientPointsRaw, revisions, company] = await Promise.all([
+  const [clientPointsRaw, revisions, company, productiveProcesses] = await Promise.all([
     isEditable
       ? prisma.collectionPoint.findMany({
           where: { clientId: proposal.clientId, active: true },
@@ -46,6 +49,13 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
     prisma.company.findFirst({
       select: { bankName: true, bankAgency: true, bankAccount: true, bankAccountType: true, bankPixKey: true },
     }),
+    isApproved
+      ? prisma.productiveProcess.findMany({
+          where: { proposalId: proposal.id },
+          include: { collectionPoint: true },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const clientPoints: WizardCollectionPoint[] = clientPointsRaw.map((p) => ({
@@ -209,6 +219,23 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
             <h2 className="text-sm font-semibold text-gray-800 mb-3">Informações adicionais</h2>
             <p className="text-sm whitespace-pre-wrap">{proposal.additionalInfo || "Nenhuma."}</p>
           </div>
+          {isApproved && (
+            <ProductiveProcessesSection
+              proposalId={proposal.id}
+              points={proposal.collectionPoints.map((cp) => ({
+                id: cp.collectionPoint.id,
+                name: cp.collectionPoint.name,
+                matrix: cp.collectionPoint.matrix,
+              }))}
+              existingProcesses={productiveProcesses.map((pp) => ({
+                id: pp.id,
+                code: pp.code,
+                collectionPointId: pp.collectionPointId,
+                collectionPointName: pp.collectionPoint.name,
+              }))}
+              canManage={canManageProductiveProcesses}
+            />
+          )}
         </div>
       )}
 

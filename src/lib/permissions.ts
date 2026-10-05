@@ -25,6 +25,8 @@ export type PermissionKey =
   | "proposals.view"
   | "proposals.manage"
   | "proposals.status.change"
+  | "productive_processes.view"
+  | "productive_processes.manage"
   | "settings.manage"
   | "audit.view";
 
@@ -59,6 +61,13 @@ export const PERMISSIONS: { key: PermissionKey; description: string; module: str
   { key: "proposals.view", description: "Visualizar propostas", module: "Propostas" },
   { key: "proposals.manage", description: "Criar, editar e revisar propostas", module: "Propostas" },
   { key: "proposals.status.change", description: "Alterar status das propostas", module: "Propostas" },
+
+  { key: "productive_processes.view", description: "Visualizar Processos Produtivos e Ordens de Serviço", module: "Processo Produtivo" },
+  {
+    key: "productive_processes.manage",
+    description: "Gerar Processos Produtivos e Ordens de Serviço a partir de propostas aprovadas",
+    module: "Processo Produtivo",
+  },
 ];
 
 export const ALL_PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);

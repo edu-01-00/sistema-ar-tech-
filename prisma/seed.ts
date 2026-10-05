@@ -80,6 +80,8 @@ async function main() {
     "collection_points.view",
     "proposals.view",
     "proposals.manage",
+    "productive_processes.view",
+    "productive_processes.manage",
   ];
   const userRole = await prisma.role.upsert({
     where: { name: "USUARIO" },

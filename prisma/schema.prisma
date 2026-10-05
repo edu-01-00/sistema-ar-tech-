@@ -11,7 +11,8 @@ datasource db {
 }
 
 // Contador genérico usado para gerar códigos únicos e sequenciais
-// (ex: código de parâmetro de ensaio, código de ordem de serviço de EPI).
+// (ex: código de parâmetro de ensaio, código de ordem de serviço de EPI,
+// numeração anual do Processo Produtivo — chave "PP_<ano>").
 // O incremento é feito com UPSERT atômico (ver src/lib/services/sequence.ts),
 // seguro contra concorrência.
 model Sequence {
@@ -94,6 +95,8 @@ model User {
   uploadedCompanyDocuments     CompanyDocument[]
   uploadedEmployeeDocuments    EmployeeDocument[]
   createdEpiOrders             EpiOrder[]
+  createdProductiveProcesses   ProductiveProcess[]     @relation("ProductiveProcessCreatedBy")
+  createdServiceOrders         ServiceOrder[]          @relation("ServiceOrderCreatedBy")
   createdProposals             Proposal[]              @relation("ProposalCreatedBy")
   criticalAnalysisProposals    Proposal[]              @relation("ProposalCriticalAnalysisBy")
   proposalStatusChanges        ProposalStatusHistory[]
@@ -423,6 +426,7 @@ model CollectionPoint {
   collectionPointLegislations CollectionPointLegislation[]
   proposalCollectionPoints    ProposalCollectionPoint[]
   ProposalTest                ProposalTest[]
+  productiveProcesses         ProductiveProcess[]
 
   @@map("collection_points")
 }
@@ -684,14 +688,15 @@ model Proposal {
   createdBy          User   @relation("ProposalCreatedBy", fields: [createdById], references: [id])
   criticalAnalysisBy User?  @relation("ProposalCriticalAnalysisBy", fields: [criticalAnalysisById], references: [id])
 
-  matrices         ProposalMatrix[]
-  contacts         ProposalContact[]
-  collectionPoints ProposalCollectionPoint[]
-  tests            ProposalTest[]
-  costs            ProposalCost[]
-  texts            ProposalText[]
-  textSnapshots    ProposalTextSnapshot[]
-  statusHistory    ProposalStatusHistory[]
+  matrices            ProposalMatrix[]
+  contacts            ProposalContact[]
+  collectionPoints    ProposalCollectionPoint[]
+  tests               ProposalTest[]
+  costs               ProposalCost[]
+  texts               ProposalText[]
+  textSnapshots       ProposalTextSnapshot[]
+  statusHistory       ProposalStatusHistory[]
+  productiveProcesses ProductiveProcess[]
 
   @@unique([sequenceNumber, year, revision])
   @@index([rootId])
@@ -746,9 +751,10 @@ model ProposalTest {
   valueSnapshot  Decimal @db.Decimal(12, 2)
   quantity       Int     @default(1)
 
-  proposal        Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  test            Test            @relation(fields: [testId], references: [id])
-  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id])
+  proposal          Proposal           @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  test              Test               @relation(fields: [testId], references: [id])
+  collectionPoint   CollectionPoint    @relation(fields: [collectionPointId], references: [id])
+  serviceOrderItems ServiceOrderItem[]
 
   @@map("proposal_tests")
 }
@@ -864,6 +870,84 @@ model TechnicalText {
   updatedBy User? @relation(fields: [updatedById], references: [id])
 
   @@map("technical_texts")
+}
+
+// =========================================================================
+// PROCESSO PRODUTIVO / ORDEM DE SERVIÇO
+// =========================================================================
+
+// Processo Produtivo: gerado a partir de uma proposta APROVADA, para UM
+// único ponto de coleta selecionado pelo usuário — não é criado
+// automaticamente para todos os pontos da proposta. Uma proposta com vários
+// pontos pode ter vários Processos Produtivos, um por ponto selecionado.
+// Numeração sequencial anual (PP 001/2026), reaproveitando o contador
+// genérico `Sequence` (chave "PP_<ano>"), reiniciada a cada novo ano.
+model ProductiveProcess {
+  id             String @id @default(cuid())
+  code           String @unique // ex: "PP 001/2026"
+  sequenceNumber Int
+  year           Int
+
+  proposalId        String
+  collectionPointId String
+
+  // Controla a numeração das Ordens de Serviço geradas a partir deste
+  // Processo Produtivo (OS 001/2026_1, _2, ...). Incrementado atomicamente
+  // via UPDATE ... RETURNING (mesmo padrão de proposalDetailInclude /
+  // allocateSequenceNumber em proposal-service.ts).
+  lastServiceOrderNumber Int @default(0)
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  proposal        Proposal        @relation(fields: [proposalId], references: [id])
+  collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id])
+  createdBy       User            @relation("ProductiveProcessCreatedBy", fields: [createdById], references: [id])
+  serviceOrders   ServiceOrder[]
+
+  @@index([proposalId])
+  @@index([collectionPointId])
+  @@map("productive_processes")
+}
+
+// Ordem de Serviço: gerada a partir de um Processo Produtivo, com os
+// parâmetros/ensaios efetivamente selecionados (e a quantidade que será
+// realizada) entre os que já estão vinculados ao ponto de coleta/proposta
+// de origem — nunca uma lista independente de parâmetros. Um mesmo
+// Processo Produtivo pode gerar mais de uma Ordem de Serviço.
+model ServiceOrder {
+  id                  String @id @default(cuid())
+  code                String @unique // ex: "OS 001/2026_1"
+  sequenceInProcess   Int // 1, 2, 3... dentro do mesmo Processo Produtivo
+  productiveProcessId String
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  productiveProcess ProductiveProcess  @relation(fields: [productiveProcessId], references: [id])
+  createdBy         User               @relation("ServiceOrderCreatedBy", fields: [createdById], references: [id])
+  items             ServiceOrderItem[]
+
+  @@unique([productiveProcessId, sequenceInProcess])
+  @@index([productiveProcessId])
+  @@map("service_orders")
+}
+
+// Item da Ordem de Serviço: referencia o ProposalTest já existente (que já
+// carrega ensaio/método/unidade/código/valor na proposta), evitando
+// duplicar esses dados — só a quantidade efetivamente selecionada para
+// realização é própria da Ordem de Serviço.
+model ServiceOrderItem {
+  id             String @id @default(cuid())
+  serviceOrderId String
+  proposalTestId String
+  quantity       Int
+
+  serviceOrder ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  proposalTest ProposalTest @relation(fields: [proposalTestId], references: [id])
+
+  @@index([serviceOrderId])
+  @@map("service_order_items")
 }
 
 // =========================================================================
