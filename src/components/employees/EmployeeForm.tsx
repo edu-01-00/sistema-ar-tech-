@@ -13,6 +13,7 @@ export function EmployeeForm({ employee }: { employee?: Employee }) {
     email: employee?.email ?? "",
     phone: employee?.phone ?? "",
     position: employee?.position ?? "",
+    sector: employee?.sector ?? "",
     registrationNumber: employee?.registrationNumber ?? "",
     hiredAt: employee?.hiredAt ? new Date(employee.hiredAt).toISOString().slice(0, 10) : "",
   });
@@ -67,8 +68,11 @@ export function EmployeeForm({ employee }: { employee?: Employee }) {
         <Field label="Telefone">
           <input className="input" value={form.phone ?? ""} onChange={(e) => update("phone", e.target.value)} />
         </Field>
-        <Field label="Cargo">
+        <Field label="Cargo/Função">
           <input className="input" value={form.position ?? ""} onChange={(e) => update("position", e.target.value)} />
+        </Field>
+        <Field label="Setor">
+          <input className="input" value={form.sector ?? ""} onChange={(e) => update("sector", e.target.value)} />
         </Field>
         <Field label="Número de registro">
           <input className="input" value={form.registrationNumber ?? ""} onChange={(e) => update("registrationNumber", e.target.value)} />

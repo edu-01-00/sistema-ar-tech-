@@ -32,6 +32,7 @@ export function EpiOrdersPanel({
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
+  const [activities, setActivities] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export function EpiOrdersPanel({
     const res = await fetch(`/api/employees/${employeeId}/epi-orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId, epiIds: selected }),
+      body: JSON.stringify({ employeeId, epiIds: selected, activities: activities.trim() || null }),
     });
     setCreating(false);
     if (!res.ok) {
@@ -60,6 +61,7 @@ export function EpiOrdersPanel({
       return;
     }
     setSelected([]);
+    setActivities("");
     router.refresh();
   }
 
@@ -96,6 +98,16 @@ export function EpiOrdersPanel({
               {epi.name}
             </label>
           ))}
+        </div>
+        <div className="mb-3">
+          <label className="text-xs font-medium text-gray-600 block mb-1">Atividades a serem realizadas:</label>
+          <textarea
+            className="input"
+            rows={3}
+            value={activities}
+            onChange={(e) => setActivities(e.target.value)}
+            placeholder="Descreva as atividades que serão realizadas pelo funcionário."
+          />
         </div>
         {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
         <button onClick={handleCreateOrder} disabled={creating} className="btn-primary text-xs">

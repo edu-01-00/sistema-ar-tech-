@@ -12,6 +12,7 @@ export const employeeSchema = z.object({
   email: z.string().trim().email("E-mail inválido.").optional().nullable().or(z.literal("")),
   phone: z.string().trim().optional().nullable(),
   position: z.string().trim().optional().nullable(),
+  sector: z.string().trim().optional().nullable(),
   registrationNumber: z.string().trim().optional().nullable(),
   hiredAt: z.string().trim().optional().nullable(),
 });
@@ -33,6 +34,7 @@ export const updateEmployeeUserSchema = z.object({
 export const epiOrderSchema = z.object({
   employeeId: z.string().min(1, "Selecione o funcionário."),
   epiIds: z.array(z.string()).min(1, "Selecione ao menos um EPI."),
+  activities: z.string().trim().optional().nullable(),
 });
 
 export const epiOrderAcceptSchema = z.object({

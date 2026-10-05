@@ -10,6 +10,14 @@ export function buildEpiOrderHtml(
 ): string {
   const itemsHtml = order.items.map((item) => `<li>${escapeHtml(item.nameSnapshot)}</li>`).join("");
 
+  // Setor/cargo vêm do snapshot gravado na emissão (nunca mudam numa OS já
+  // emitida, mesmo que o cadastro do funcionário seja alterado depois). Para
+  // OS geradas antes desta funcionalidade existir (sem snapshot gravado),
+  // usa o dado atual do cadastro como alternativa — nunca houve um valor
+  // original registrado para preservar nesse caso.
+  const sectorLabel = order.sectorSnapshot ?? employee.sector;
+  const positionLabel = order.positionSnapshot ?? employee.position;
+
   const acceptanceHtml = order.acceptedAt
     ? `
       <div class="acceptance-box">
@@ -55,7 +63,10 @@ export function buildEpiOrderHtml(
   </header>
 
   <h2>Ordem de Serviço para Uso de EPI</h2>
-  <p><strong>Funcionário:</strong> ${escapeHtml(employee.name)}${employee.position ? ` — ${escapeHtml(employee.position)}` : ""}</p>
+  <p><strong>Funcionário:</strong> ${escapeHtml(employee.name)}</p>
+  ${sectorLabel ? `<p><strong>Setor:</strong> ${escapeHtml(sectorLabel)}</p>` : ""}
+  ${positionLabel ? `<p><strong>Cargo/Função:</strong> ${escapeHtml(positionLabel)}</p>` : ""}
+  ${order.activities ? `<p><strong>Atividades a serem realizadas:</strong> ${escapeHtml(order.activities)}</p>` : ""}
 
   <h2>Equipamentos de Proteção Individual (EPIs)</h2>
   <ul>${itemsHtml || "<li>Nenhum EPI informado.</li>"}</ul>

@@ -179,7 +179,8 @@ model Employee {
   cpf                String?   @unique
   email              String?
   phone              String?
-  position           String? // cargo
+  position           String? // cargo/função
+  sector             String? // setor
   registrationNumber String? // número de registro do funcionário
   hiredAt            DateTime?
   active             Boolean   @default(true)
@@ -252,6 +253,16 @@ model EpiOrder {
   storageKey   String? // PDF gerado
   createdById  String
   createdAt    DateTime       @default(now())
+
+  // Atividades a serem realizadas: texto livre específico desta OS (não
+  // confundir com o cargo/função do cadastro do funcionário).
+  activities String?
+
+  // Snapshot do setor/cargo do funcionário no momento da emissão: uma
+  // alteração posterior no cadastro do funcionário nunca deve mudar uma OS
+  // já emitida (mesmo padrão de snapshot já usado em EpiOrderItem.nameSnapshot).
+  sectorSnapshot   String?
+  positionSnapshot String?
 
   employee  Employee       @relation(fields: [employeeId], references: [id])
   createdBy User           @relation(fields: [createdById], references: [id])

@@ -29,6 +29,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           code,
           employeeId: employee.id,
           createdById: session.user.id,
+          activities: data.activities || null,
+          // Snapshot do setor/cargo no momento da emissão — uma alteração
+          // posterior no cadastro do funcionário nunca deve mudar esta OS.
+          sectorSnapshot: employee.sector,
+          positionSnapshot: employee.position,
           items: { create: epis.map((epi) => ({ epiId: epi.id, nameSnapshot: epi.name })) },
         },
         include: { items: true },
