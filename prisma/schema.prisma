@@ -95,6 +95,7 @@ model User {
   uploadedCompanyDocuments     CompanyDocument[]
   uploadedEmployeeDocuments    EmployeeDocument[]
   createdEpiOrders             EpiOrder[]
+  createdEpiRecords            EpiRecord[]
   createdProductiveProcesses   ProductiveProcess[]     @relation("ProductiveProcessCreatedBy")
   createdServiceOrders         ServiceOrder[]          @relation("ServiceOrderCreatedBy")
   createdProposals             Proposal[]              @relation("ProposalCreatedBy")
@@ -183,6 +184,7 @@ model Employee {
   sector             String? // setor
   registrationNumber String? // número de registro do funcionário
   hiredAt            DateTime?
+  terminatedAt       DateTime? // data de demissão — preenchida ao desativar o funcionário
   active             Boolean   @default(true)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -190,6 +192,7 @@ model Employee {
   user      User?
   documents EmployeeDocument[]
   epiOrders EpiOrder[]
+  epiRecord EpiRecord?
 
   @@map("employees")
 }
@@ -281,6 +284,51 @@ model EpiOrderItem {
   epi      Epi      @relation(fields: [epiId], references: [id])
 
   @@map("epi_order_items")
+}
+
+// =========================================================================
+// FICHA DE EPI
+// =========================================================================
+
+// Ficha de EPI: um único registro por funcionário (não um por entrega, como
+// a Ordem de Serviço de EPI acima). Assinada uma única vez, na admissão —
+// os EPIs entregues depois são adicionados como itens (EpiRecordItem), sem
+// exigir nova assinatura a cada entrega. Data de admissão/demissão nunca
+// são duplicadas aqui: sempre lidas do cadastro do funcionário (Employee)
+// no momento da exibição/geração do PDF.
+model EpiRecord {
+  id          String    @id @default(cuid())
+  employeeId  String    @unique
+  signedAt    DateTime?
+  signedName  String? // nome digitado na assinatura (mesmo padrão já usado em EpiOrder.acceptedName)
+  storageKey  String? // último PDF gerado
+  createdById String
+  createdAt   DateTime  @default(now())
+
+  employee  Employee        @relation(fields: [employeeId], references: [id])
+  createdBy User            @relation(fields: [createdById], references: [id])
+  items     EpiRecordItem[]
+
+  @@map("epi_records")
+}
+
+// Item de EPI entregue: descrição/quantidade/Nº do CA em texto livre
+// (conforme item 6-8 do requisito — não vinculado ao catálogo de Epi usado
+// pela Ordem de Serviço, que é um fluxo separado), com datas de entrega e
+// devolução próprias e independentes para cada equipamento.
+model EpiRecordItem {
+  id          String    @id @default(cuid())
+  epiRecordId String
+  description String
+  quantity    Int
+  caNumber    String?
+  deliveredAt DateTime
+  returnedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  epiRecord EpiRecord @relation(fields: [epiRecordId], references: [id], onDelete: Cascade)
+
+  @@map("epi_record_items")
 }
 
 // =========================================================================

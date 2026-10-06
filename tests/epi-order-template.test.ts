@@ -13,6 +13,7 @@ function makeEmployee(overrides: Partial<Employee> = {}): Employee {
     sector: "Qualidade",
     registrationNumber: null,
     hiredAt: null,
+    terminatedAt: null,
     active: true,
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-01"),

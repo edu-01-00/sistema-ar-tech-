@@ -9,9 +9,12 @@ export async function PATCH(_request: Request, { params }: { params: { id: strin
     const existing = await prisma.employee.findUnique({ where: { id: params.id } });
     if (!existing) throw new ApiError("Funcionário não encontrado.", 404);
 
+    const willBeActive = !existing.active;
     const employee = await prisma.employee.update({
       where: { id: params.id },
-      data: { active: !existing.active },
+      // Data de demissão: gravada ao desativar, limpa ao reativar — a Ficha
+      // de EPI lê esse campo diretamente do cadastro (item 4 do requisito).
+      data: { active: willBeActive, terminatedAt: willBeActive ? null : new Date() },
     });
 
     await writeAuditLog({

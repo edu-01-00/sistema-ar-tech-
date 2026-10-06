@@ -8,8 +8,9 @@ import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { EmployeeForm } from "@/components/employees/EmployeeForm";
 import { EmployeeUserPanel } from "@/components/employees/EmployeeUserPanel";
 import { EpiOrdersPanel } from "@/components/employees/EpiOrdersPanel";
+import { EpiRecordPanel } from "@/components/employees/EpiRecordPanel";
 import { DocumentManager } from "@/components/documents/DocumentManager";
-import { EMPLOYEE_DOCUMENT_CATEGORY_LABELS } from "@/lib/format";
+import { EMPLOYEE_DOCUMENT_CATEGORY_LABELS, formatDate } from "@/lib/format";
 
 export default async function FuncionarioDetailPage({ params }: { params: { id: string } }) {
   const session = await requirePagePermission(["employees.view", "employees.manage"]);
@@ -32,6 +33,23 @@ export default async function FuncionarioDetailPage({ params }: { params: { id: 
     canManageUsers ? prisma.role.findMany({ orderBy: { name: "asc" } }) : Promise.resolve([]),
     canManageEpi ? prisma.epi.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : Promise.resolve([]),
   ]);
+
+  // Ficha de EPI: vínculo único por funcionário. Busca a ficha existente ou
+  // cria uma vazia na primeira visita à tela (não há formulário de criação
+  // separado — a ficha apenas agrupa funcionário + itens de EPI + assinatura).
+  let epiRecord = canManageEpi
+    ? await prisma.epiRecord.findUnique({ where: { employeeId: employee.id }, include: { items: { orderBy: { createdAt: "asc" } } } })
+    : null;
+  if (canManageEpi && !epiRecord) {
+    epiRecord = await prisma.epiRecord
+      .create({
+        data: { employeeId: employee.id, createdById: session.user.id },
+        include: { items: { orderBy: { createdAt: "asc" } } },
+      })
+      .catch(() =>
+        prisma.epiRecord.findUniqueOrThrow({ where: { employeeId: employee.id }, include: { items: { orderBy: { createdAt: "asc" } } } }),
+      );
+  }
 
   // Item 3: documentos do funcionário reorganizados em dois grupos —
   // "Contratação" e "Segurança do Trabalho / Cursos" (que também cobre exames).
@@ -92,6 +110,15 @@ export default async function FuncionarioDetailPage({ params }: { params: { id: 
           />
 
           {canManageEpi && <EpiOrdersPanel employeeId={employee.id} epis={epis} orders={employee.epiOrders} />}
+
+          {canManageEpi && epiRecord && (
+            <EpiRecordPanel
+              employeeId={employee.id}
+              record={epiRecord}
+              admissionLabel={employee.hiredAt ? formatDate(employee.hiredAt) : "-"}
+              terminationLabel={employee.terminatedAt ? formatDate(employee.terminatedAt) : null}
+            />
+          )}
         </div>
       </div>
     </div>

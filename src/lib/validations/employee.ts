@@ -40,3 +40,19 @@ export const epiOrderSchema = z.object({
 export const epiOrderAcceptSchema = z.object({
   acceptedName: z.string().trim().min(2, "Informe o nome completo para confirmar o aceite."),
 });
+
+export const epiRecordSignSchema = z.object({
+  signedName: z.string().trim().min(2, "Informe o nome completo para confirmar a assinatura."),
+});
+
+export const epiRecordItemSchema = z.object({
+  description: z.string().trim().min(1, "Informe a descrição do EPI."),
+  quantity: z.coerce.number().int("Quantidade deve ser um número inteiro.").min(1, "Informe uma quantidade válida."),
+  caNumber: z.string().trim().optional().nullable(),
+  deliveredAt: z.string().trim().min(1, "Informe a data de entrega."),
+  returnedAt: z.string().trim().optional().nullable(),
+});
+
+export const epiRecordItemReturnSchema = z.object({
+  returnedAt: z.string().trim().min(1, "Informe a data de devolução."),
+});
