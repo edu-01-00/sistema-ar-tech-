@@ -4,7 +4,7 @@ import { formatCurrency, formatDate, MATRIX_LABELS, PAYMENT_METHOD_LABELS } from
 import { escapeHtml, nl2br } from "@/lib/pdf/html-utils";
 import { BRAZILIAN_STATES } from "@/lib/br-locations";
 import { formatCnpj } from "@/lib/cnpj";
-import { buildPaymentConditionText, computePointDisplaySubtotals, sumDisplaySubtotals } from "@/lib/proposal-logic";
+import { buildPaymentConditionText, computePointDisplaySubtotals, sumDisplaySubtotals, round2 } from "@/lib/proposal-logic";
 
 type TextSnapshot = ProposalWithDetails["textSnapshots"][number];
 
@@ -81,11 +81,30 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     testsByPoint.set(t.collectionPointId, list);
   }
 
+  // Rateio do custo adicional: calculado no nível do ENSAIO (cada linha de
+  // ProposalTest), proporcional ao valor de cada ensaio (quantidade × valor
+  // unitário) em relação ao total de ensaios da proposta — nunca dividido
+  // igualmente nem por ponto. Quando "demonstrar custo adicional" = Não, o
+  // valor de cada ensaio exibido já incorpora sua parte proporcional do
+  // custo adicional; quando = Sim, o valor exibido é o original (o custo
+  // aparece como linha separada). A soma dos valores rateados é sempre
+  // exatamente igual ao custo adicional total (computePointDisplaySubtotals
+  // é a mesma função genérica de distribuição usada em todo o sistema —
+  // aqui aplicada por ensaio, não por ponto).
+  const testLineSubtotals = computePointDisplaySubtotals({
+    points: proposal.tests.map((t) => ({ key: t.id, testsSubtotal: Number(t.valueSnapshot) * t.quantity })),
+    otherCostsTotal: Number(proposal.otherCostsTotal),
+    distributeOtherCosts: !proposal.useAdditionalCosts,
+  });
+  const testLineDisplayById = new Map(testLineSubtotals.map((s) => [s.key, s.displaySubtotal]));
+
   // Item 13-14: tabela de serviços — sem "código do parâmetro", com LQ +
   // unidade (do cadastro do ensaio) e coluna Acreditado/CGCRE (também do
   // cadastro do ensaio, nunca definida manualmente na proposta). O valor
   // unitário só aparece se exhibitUnitValue estiver ativo (item 15) — o
-  // total, porém, é sempre calculado com os valores reais.
+  // "Subtotal" exibido de cada ensaio já reflete o rateio do custo adicional
+  // quando aplicável (o "Valor unit." permanece o valor contratado, sem
+  // alteração — só o total da linha incorpora o rateio).
   const showUnitValue = proposal.exhibitUnitValue;
   const pointsHtml = proposal.collectionPoints
     .map(({ collectionPoint }) => {
@@ -94,6 +113,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
         .map((t) => {
           const lq = t.test.quantificationLimit ? `${escapeHtml(t.test.quantificationLimit)}` : "-";
           const acreditado = t.test.isAccredited ? "CGCRE" : "-";
+          const lineSubtotal = testLineDisplayById.get(t.id) ?? Number(t.valueSnapshot) * t.quantity;
           return `
         <tr>
           <td>${escapeHtml(t.nameSnapshot)}</td>
@@ -102,7 +122,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
           <td>${escapeHtml(t.test.unit)}</td>
           <td class="text-center">${acreditado}</td>
           <td class="text-center">${t.quantity}</td>
-          ${showUnitValue ? `<td class="text-right">${formatCurrency(Number(t.valueSnapshot))}</td><td class="text-right">${formatCurrency(Number(t.valueSnapshot) * t.quantity)}</td>` : ""}
+          ${showUnitValue ? `<td class="text-right">${formatCurrency(Number(t.valueSnapshot))}</td><td class="text-right">${formatCurrency(lineSubtotal)}</td>` : ""}
         </tr>`;
         })
         .join("");
@@ -127,24 +147,17 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
   // total dos ensaios, o deslocamento (rótulo simples, sem o cálculo entre
   // parênteses — exibido apenas se exhibitTravelValue estiver ativo, mas
   // sempre somado ao valor final, exibido ou não), o desconto (se houver) e
-  // por fim o valor total. Quando o custo adicional NÃO é demonstrado
-  // separadamente, ele é distribuído igualmente entre os pontos e já
-  // aparece incorporado em cada "Valor total — <ponto>" (computePointDisplaySubtotals
-  // é a mesma função usada em todas as telas — fonte única de cálculo).
-  const pointSubtotals = computePointDisplaySubtotals({
-    points: proposal.collectionPoints.map(({ collectionPoint }) => {
+  // por fim o valor total. O total de cada ponto é a soma dos valores já
+  // rateados (por ensaio) dos seus próprios ensaios — nunca uma segunda
+  // distribuição — garantindo que a soma bata exatamente com o rateio.
+  const pointSubtotalsHtml = proposal.collectionPoints
+    .map(({ collectionPoint }) => {
       const tests = testsByPoint.get(collectionPoint.id) ?? [];
-      const testsSubtotal = tests.reduce((sum, t) => sum + Number(t.valueSnapshot) * t.quantity, 0);
-      return { key: collectionPoint.id, testsSubtotal };
-    }),
-    otherCostsTotal: Number(proposal.otherCostsTotal),
-    distributeOtherCosts: !proposal.useAdditionalCosts,
-  });
-  const pointNameById = new Map(proposal.collectionPoints.map(({ collectionPoint }) => [collectionPoint.id, collectionPoint.name]));
-  const pointSubtotalsHtml = pointSubtotals
-    .map((p) => `<tr><td>Valor total — ${escapeHtml(pointNameById.get(p.key) ?? "")}</td><td class="text-right">${formatCurrency(p.displaySubtotal)}</td></tr>`)
+      const pointDisplayTotal = round2(tests.reduce((sum, t) => sum + (testLineDisplayById.get(t.id) ?? 0), 0));
+      return `<tr><td>Valor total — ${escapeHtml(collectionPoint.name)}</td><td class="text-right">${formatCurrency(pointDisplayTotal)}</td></tr>`;
+    })
     .join("");
-  const ensaiosDisplayTotal = sumDisplaySubtotals(pointSubtotals);
+  const ensaiosDisplayTotal = sumDisplaySubtotals(testLineSubtotals);
 
   const costsHtml = proposal.costs
     .map((c) => `<tr><td>${escapeHtml(c.description)}</td><td class="text-right">${formatCurrency(Number(c.value))}</td></tr>`)

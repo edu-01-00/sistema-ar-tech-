@@ -1,8 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { createProposal, createProposalRevision, changeProposalStatus, recalculateProposalTotals } from "@/lib/services/proposal-service";
+import {
+  createProposal,
+  createProposalRevision,
+  changeProposalStatus,
+  recalculateProposalTotals,
+  proposalDetailInclude,
+} from "@/lib/services/proposal-service";
 import { ApiError } from "@/lib/api-helpers";
+import { buildProposalHtml } from "@/lib/pdf/proposal-template";
+import { formatCurrency } from "@/lib/format";
 
 // Testes de integração contra o banco de desenvolvimento real (Postgres),
 // cobrindo as regras mais críticas de propostas: geração de código único,
@@ -213,6 +221,103 @@ describe("recalculateProposalTotals - desconto e custo adicional (persistência 
     expect(Number(revision.discountValue)).toBe(10);
     expect(Number(revision.totalValue)).toBe(190);
 
+    vi.useRealTimers();
+  });
+});
+
+describe("Rateio proporcional do custo adicional entre os ensaios (PDF) — persistência real", () => {
+  async function setupProposalWithThreeTests(useAdditionalCosts: boolean) {
+    const proposal = await createProposal(userId, {
+      clientId,
+      matrices: ["QUALIDADE_AR"],
+      contactIds: [],
+      exhibitUnitValue: true,
+      useAdditionalCosts,
+      exhibitTravelValue: true,
+    });
+    createdProposalIds.push(proposal.id);
+
+    const point = await prisma.collectionPoint.create({ data: { clientId, matrix: "QUALIDADE_AR", name: "Ponto Único" } });
+    await prisma.proposalCollectionPoint.create({ data: { proposalId: proposal.id, collectionPointId: point.id } });
+
+    const suffix = randomUUID().slice(0, 6);
+    const testA = await prisma.test.create({ data: { name: "Ensaio A", method: "M-A", unit: "mg/m³", parameterCode: `TA-${suffix}`, value: 1000, matrix: "QUALIDADE_AR" } });
+    const testB = await prisma.test.create({ data: { name: "Ensaio B", method: "M-B", unit: "mg/m³", parameterCode: `TB-${suffix}`, value: 2000, matrix: "QUALIDADE_AR" } });
+    const testC = await prisma.test.create({ data: { name: "Ensaio C", method: "M-C", unit: "mg/m³", parameterCode: `TC-${suffix}`, value: 3000, matrix: "QUALIDADE_AR" } });
+
+    await prisma.proposalTest.createMany({
+      data: [
+        { proposalId: proposal.id, testId: testA.id, collectionPointId: point.id, nameSnapshot: "Ensaio A", methodSnapshot: "M-A", unitSnapshot: "mg/m³", codeSnapshot: testA.parameterCode, valueSnapshot: 1000, quantity: 1 },
+        { proposalId: proposal.id, testId: testB.id, collectionPointId: point.id, nameSnapshot: "Ensaio B", methodSnapshot: "M-B", unitSnapshot: "mg/m³", codeSnapshot: testB.parameterCode, valueSnapshot: 2000, quantity: 1 },
+        { proposalId: proposal.id, testId: testC.id, collectionPointId: point.id, nameSnapshot: "Ensaio C", methodSnapshot: "M-C", unitSnapshot: "mg/m³", codeSnapshot: testC.parameterCode, valueSnapshot: 3000, quantity: 1 },
+      ],
+    });
+
+    await prisma.proposalCost.create({ data: { proposalId: proposal.id, description: "Custo adicional de teste", value: 600, type: "OUTRO" } });
+    await prisma.$transaction((tx) => recalculateProposalTotals(tx, proposal.id));
+
+    const full = await prisma.proposal.findUniqueOrThrow({ where: { id: proposal.id }, include: proposalDetailInclude });
+
+    return {
+      proposal,
+      point,
+      testIds: [testA.id, testB.id, testC.id],
+      full,
+      cleanup: async () => {
+        await prisma.proposalTest.deleteMany({ where: { proposalId: proposal.id } });
+        await prisma.proposalCost.deleteMany({ where: { proposalId: proposal.id } });
+        await prisma.test.deleteMany({ where: { id: { in: [testA.id, testB.id, testC.id] } } });
+        await prisma.proposalCollectionPoint.deleteMany({ where: { proposalId: proposal.id } });
+        await prisma.collectionPoint.deleteMany({ where: { id: point.id } });
+      },
+    };
+  }
+
+  it("'Demonstrar custo adicional?' = Não: cada ensaio exibe seu valor original + rateio proporcional (exemplo do requisito: 1000/2000/3000 + 600 -> 1100/2200/3300)", async () => {
+    vi.setSystemTime(new Date(2098, 6, 3));
+    const { full, cleanup } = await setupProposalWithThreeTests(false);
+
+    const html = buildProposalHtml(full, null, null);
+
+    // Ensaio A: 1000 + (1000/6000)*600 = 1100 | Ensaio B: 2000 + (2000/6000)*600 = 2200 | Ensaio C: 3000 + (3000/6000)*600 = 3300
+    expect(html).toContain(formatCurrency(1100));
+    expect(html).toContain(formatCurrency(2200));
+    expect(html).toContain(formatCurrency(3300));
+    expect(html).not.toContain("Custo adicional de teste");
+    expect(html).toContain(`<tr><td>Valor total — Ponto Único</td><td class="text-right">${formatCurrency(6600)}</td></tr>`);
+    expect(html).toContain(`<tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(6600)}</td></tr>`);
+
+    await cleanup();
+    vi.useRealTimers();
+  });
+
+  it("'Demonstrar custo adicional?' = Sim: ensaios mantêm o valor original e o custo aparece em linha separada", async () => {
+    vi.setSystemTime(new Date(2098, 6, 4));
+    const { full, cleanup } = await setupProposalWithThreeTests(true);
+
+    const html = buildProposalHtml(full, null, null);
+
+    expect(html).toContain(formatCurrency(1000));
+    expect(html).toContain(formatCurrency(2000));
+    expect(html).toContain(formatCurrency(3000));
+    expect(html).toContain("Custo adicional de teste");
+    expect(html).toContain(`<tr><td>Valor total — Ponto Único</td><td class="text-right">${formatCurrency(6000)}</td></tr>`);
+    expect(html).toContain(`<tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(6000)}</td></tr>`);
+
+    await cleanup();
+    vi.useRealTimers();
+  });
+
+  it("o valor total da proposta é idêntico nas duas opções (Sim/Não só muda a apresentação, nunca o total)", async () => {
+    vi.setSystemTime(new Date(2098, 6, 5));
+    const sim = await setupProposalWithThreeTests(true);
+    const nao = await setupProposalWithThreeTests(false);
+
+    expect(Number(sim.full.totalValue)).toBe(Number(nao.full.totalValue));
+    expect(Number(sim.full.totalValue)).toBe(6600);
+
+    await sim.cleanup();
+    await nao.cleanup();
     vi.useRealTimers();
   });
 });

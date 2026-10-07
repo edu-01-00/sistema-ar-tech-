@@ -199,6 +199,19 @@ describe("distributeAmountProportionally", () => {
     expect(distributeAmountProportionally(100, [])).toEqual([]);
     expect(distributeAmountProportionally(0, [1, 1, 1])).toEqual([0, 0, 0]);
   });
+
+  it("exemplo do requisito: ensaios de R$1.000/2.000/3.000 com custo adicional de R$600 -> R$100/200/300", () => {
+    const shares = distributeAmountProportionally(600, [1000, 2000, 3000]);
+    expect(shares).toEqual([100, 200, 300]);
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(600);
+  });
+
+  it("funciona com valores decimais nos pesos e no total a distribuir", () => {
+    const shares = distributeAmountProportionally(33.33, [150.5, 99.25, 50.25]);
+    expect(shares).toHaveLength(3);
+    const sum = Math.round(shares.reduce((a, b) => a + b, 0) * 100) / 100;
+    expect(sum).toBe(33.33);
+  });
 });
 
 describe("computePointDisplaySubtotals / sumDisplaySubtotals", () => {
