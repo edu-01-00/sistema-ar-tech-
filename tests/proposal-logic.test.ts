@@ -8,7 +8,7 @@ import {
   nextRevisionCode,
   round2,
   buildPaymentConditionText,
-  distributeAmountEqually,
+  distributeAmountProportionally,
   computePointDisplaySubtotals,
   sumDisplaySubtotals,
 } from "@/lib/proposal-logic";
@@ -169,30 +169,40 @@ describe("computeProposalTotal", () => {
   });
 });
 
-describe("distributeAmountEqually", () => {
-  it("TESTE 4 (custo adicional não demonstrado): distribui igualmente entre os pontos", () => {
-    expect(distributeAmountEqually(100, 2)).toEqual([50, 50]);
+describe("distributeAmountProportionally", () => {
+  it("distribui proporcionalmente ao peso de cada item (não igualmente)", () => {
+    // pesos 1000/800 (ex.: valor dos ensaios de cada ponto) sobre 100 de custo adicional
+    expect(distributeAmountProportionally(100, [1000, 800])).toEqual([55.56, 44.44]);
   });
 
-  it("TESTE 6 (arredondamento): a soma das parcelas é exatamente igual ao valor original", () => {
-    const shares = distributeAmountEqually(100, 3);
+  it("com pesos iguais, o resultado equivale à distribuição igual", () => {
+    expect(distributeAmountProportionally(100, [1, 1])).toEqual([50, 50]);
+  });
+
+  it("pesos muito diferentes: o item de maior peso recebe proporcionalmente mais", () => {
+    expect(distributeAmountProportionally(40, [3000, 1000, 0])).toEqual([30, 10, 0]);
+  });
+
+  it("arredondamento: a soma das parcelas é exatamente igual ao valor original (método dos maiores restos)", () => {
+    const shares = distributeAmountProportionally(100, [1, 1, 1]);
     expect(shares).toHaveLength(3);
     const sum = shares.reduce((a, b) => a + b, 0);
     expect(Math.round(sum * 100) / 100).toBe(100);
-    // 100 / 3 = 33.33... -> 33.33 + 33.33 + 33.34 (ajuste no último item)
-    expect(shares[0]).toBe(33.33);
-    expect(shares[1]).toBe(33.33);
-    expect(shares[2]).toBe(33.34);
+    expect(shares).toEqual([33.34, 33.33, 33.33]);
   });
 
-  it("retorna lista vazia sem dividir por zero", () => {
-    expect(distributeAmountEqually(100, 0)).toEqual([]);
-    expect(distributeAmountEqually(0, 3)).toEqual([]);
+  it("quando todos os pesos são zero, cai para distribuição igual (o valor nunca deixa de ser distribuído)", () => {
+    expect(distributeAmountProportionally(100, [0, 0])).toEqual([50, 50]);
+  });
+
+  it("retorna lista vazia ou de zeros sem dividir por zero", () => {
+    expect(distributeAmountProportionally(100, [])).toEqual([]);
+    expect(distributeAmountProportionally(0, [1, 1, 1])).toEqual([0, 0, 0]);
   });
 });
 
 describe("computePointDisplaySubtotals / sumDisplaySubtotals", () => {
-  it("TESTE 3 (custo adicional demonstrado): subtotal de cada ponto permanece só com os ensaios", () => {
+  it("custo adicional demonstrado (Sim): subtotal de cada ponto permanece só com os ensaios", () => {
     const subtotals = computePointDisplaySubtotals({
       points: [
         { key: "p1", testsSubtotal: 1000 },
@@ -208,7 +218,7 @@ describe("computePointDisplaySubtotals / sumDisplaySubtotals", () => {
     expect(sumDisplaySubtotals(subtotals)).toBe(1800);
   });
 
-  it("TESTE 4 (custo adicional não demonstrado): incorpora a distribuição em cada ponto", () => {
+  it("custo adicional não demonstrado (Não): distribui PROPORCIONALMENTE entre os ensaios, refletido no total de cada ponto", () => {
     const subtotals = computePointDisplaySubtotals({
       points: [
         { key: "p1", testsSubtotal: 1000 },
@@ -217,9 +227,10 @@ describe("computePointDisplaySubtotals / sumDisplaySubtotals", () => {
       otherCostsTotal: 100,
       distributeOtherCosts: true,
     });
+    // peso p1=1000, p2=800 (não mais 50/50 igual): p1 recebe mais por ter mais valor em ensaios
     expect(subtotals).toEqual([
-      { key: "p1", displaySubtotal: 1050 },
-      { key: "p2", displaySubtotal: 850 },
+      { key: "p1", displaySubtotal: 1055.56 },
+      { key: "p2", displaySubtotal: 844.44 },
     ]);
     expect(sumDisplaySubtotals(subtotals)).toBe(1900);
   });

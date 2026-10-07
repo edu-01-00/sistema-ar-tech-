@@ -100,19 +100,29 @@ export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-// Distribui um valor igualmente entre `count` itens sem perder centavos por
-// arredondamento (item 7 do requisito de custo adicional): trabalha em
-// centavos inteiros e ajusta a diferença de arredondamento sempre no último
-// item, garantindo que a soma das parcelas seja EXATAMENTE igual ao valor
-// original.
-export function distributeAmountEqually(totalValue: number, count: number): number[] {
-  if (count <= 0 || totalValue === 0) return [];
+// Distribui um valor proporcionalmente a `weights` (ex.: o valor de cada
+// ensaio/ponto na proposta) sem perder nem sobrar centavos por
+// arredondamento: calcula a parte inteira de cada cota em centavos e aloca
+// os centavos restantes aos itens com maior parte fracionária (método dos
+// maiores restos), garantindo soma EXATAMENTE igual ao valor original.
+// Quando todos os pesos são zero (nenhuma base para proporção), cai para
+// distribuição igual entre os itens — o valor nunca deixa de ser distribuído.
+export function distributeAmountProportionally(totalValue: number, weights: number[]): number[] {
+  if (weights.length === 0 || totalValue === 0) return weights.map(() => 0);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const effectiveWeights = totalWeight > 0 ? weights : weights.map(() => 1);
+  const effectiveTotalWeight = totalWeight > 0 ? totalWeight : weights.length;
   const totalCents = Math.round(totalValue * 100);
-  const baseCents = Math.floor(totalCents / count);
-  const remainderCents = totalCents - baseCents * count;
-  const shares = Array.from({ length: count }, () => baseCents);
-  shares[count - 1] += remainderCents;
-  return shares.map((cents) => cents / 100);
+  const rawShares = effectiveWeights.map((w) => (totalCents * w) / effectiveTotalWeight);
+  const shareCents = rawShares.map((v) => Math.floor(v));
+  let remainderCents = totalCents - shareCents.reduce((a, b) => a + b, 0);
+  const byFractionDesc = rawShares
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < byFractionDesc.length && remainderCents > 0; k++, remainderCents--) {
+    shareCents[byFractionDesc[k].i] += 1;
+  }
+  return shareCents.map((cents) => cents / 100);
 }
 
 export interface PointSubtotalInput {
@@ -125,12 +135,15 @@ export interface PointDisplaySubtotal {
   displaySubtotal: number;
 }
 
-// Centraliza a regra de exibição do custo adicional (item 4-7 do requisito):
-// quando `distributeOtherCosts` é falso ("demonstrar custo adicional"), cada
+// Centraliza a regra de exibição do custo adicional: quando
+// `distributeOtherCosts` é falso ("demonstrar custo adicional" = Sim), cada
 // ponto mostra apenas o seu próprio subtotal de ensaios, e o custo aparece
-// como linha separada. Quando verdadeiro ("NÃO demonstrar"), o valor de
-// `otherCostsTotal` é distribuído igualmente entre os pontos e incorporado
-// ao subtotal exibido de cada um — o custo nunca desaparece do total, só
+// como linha separada. Quando verdadeiro ("demonstrar" = Não), o valor de
+// `otherCostsTotal` é distribuído de forma PROPORCIONAL entre os ensaios da
+// proposta — na prática, o peso de cada ponto é a soma do valor dos seus
+// próprios ensaios (`testsSubtotal`), então distribuir proporcionalmente por
+// ponto usando esse peso é matematicamente idêntico a distribuir ensaio a
+// ensaio e depois somar por ponto. O custo nunca desaparece do total, só
 // muda a forma de apresentação.
 export function computePointDisplaySubtotals(params: {
   points: PointSubtotalInput[];
@@ -141,7 +154,10 @@ export function computePointDisplaySubtotals(params: {
   if (!distributeOtherCosts || points.length === 0 || otherCostsTotal === 0) {
     return points.map((p) => ({ key: p.key, displaySubtotal: p.testsSubtotal }));
   }
-  const shares = distributeAmountEqually(otherCostsTotal, points.length);
+  const shares = distributeAmountProportionally(
+    otherCostsTotal,
+    points.map((p) => p.testsSubtotal),
+  );
   return points.map((p, i) => ({ key: p.key, displaySubtotal: round2(p.testsSubtotal + shares[i]) }));
 }
 

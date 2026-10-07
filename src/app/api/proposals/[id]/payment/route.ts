@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission, parseBody, handleApiError, ApiError } from "@/lib/api-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { updateProposalPaymentSchema } from "@/lib/validations/proposal";
-import { assertProposalEditable } from "@/lib/services/proposal-service";
+import { assertProposalEditable, recalculateProposalTotals } from "@/lib/services/proposal-service";
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -14,22 +14,29 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (!proposal) throw new ApiError("Proposta não encontrada.", 404);
     assertProposalEditable(proposal.status, proposal.supersededAt);
 
-    await prisma.proposal.update({
-      where: { id: proposal.id },
-      data: {
-        paymentMethod: data.paymentMethod,
-        installments: data.paymentMethod === "PARCELADO" ? data.installments : null,
-        firstInstallmentDueDays: data.paymentMethod === "PARCELADO" ? (data.firstInstallmentDueDays ?? null) : null,
-        paymentDueDays: data.paymentMethod === "PARCELADO" ? null : (data.paymentDueDays ?? null),
-      },
-    });
-
-    await writeAuditLog({
-      userId: session.user.id,
-      action: "UPDATE",
-      entityType: "Proposal",
-      entityId: proposal.id,
-      description: `Forma de pagamento da proposta ${proposal.code} definida.`,
+    await prisma.$transaction(async (tx) => {
+      await tx.proposal.update({
+        where: { id: proposal.id },
+        data: {
+          paymentMethod: data.paymentMethod,
+          installments: data.paymentMethod === "PARCELADO" ? data.installments : null,
+          firstInstallmentDueDays: data.paymentMethod === "PARCELADO" ? (data.firstInstallmentDueDays ?? null) : null,
+          paymentDueDays: data.paymentMethod === "PARCELADO" ? null : (data.paymentDueDays ?? null),
+          // Desconto: movido da seção de Custos para Forma de Pagamento.
+          discountPercent: data.discountPercent,
+        },
+      });
+      await recalculateProposalTotals(tx, proposal.id);
+      await writeAuditLog(
+        {
+          userId: session.user.id,
+          action: "UPDATE",
+          entityType: "Proposal",
+          entityId: proposal.id,
+          description: `Forma de pagamento da proposta ${proposal.code} definida.`,
+        },
+        tx,
+      );
     });
 
     return NextResponse.json({ ok: true });

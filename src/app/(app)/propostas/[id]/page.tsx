@@ -161,7 +161,6 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
               travelOtherCosts: proposal.travelOtherCosts ? Number(proposal.travelOtherCosts) : null,
             }}
             initialCosts={proposal.costs.map((c) => ({ description: c.description, value: Number(c.value), type: c.type }))}
-            initialDiscountPercent={Number(proposal.discountPercent)}
           />
           <PaymentSection
             proposalId={proposal.id}
@@ -169,6 +168,7 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
             initialInstallments={proposal.installments}
             initialPaymentDueDays={proposal.paymentDueDays}
             initialFirstInstallmentDueDays={proposal.firstInstallmentDueDays as 15 | 30 | null}
+            initialDiscountPercent={Number(proposal.discountPercent)}
             company={company}
           />
           <AdditionalInfoSection proposalId={proposal.id} initialValue={proposal.additionalInfo ?? ""} />

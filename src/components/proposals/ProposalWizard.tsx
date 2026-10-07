@@ -187,7 +187,6 @@ export function ProposalWizard({
       travelValuePerKm: travel.travelValuePerKm ? Number(travel.travelValuePerKm) : null,
       travelOtherCosts: travel.travelOtherCosts ? Number(travel.travelOtherCosts) : null,
       costs,
-      discountPercent,
     };
     const data = await callApi(`/api/proposals/${proposalId}/costs`, "PATCH", payload);
     if (!data) return;
@@ -204,6 +203,7 @@ export function ProposalWizard({
       installments: paymentMethod === "PARCELADO" ? installments : undefined,
       firstInstallmentDueDays: paymentMethod === "PARCELADO" ? firstInstallmentDueDays : undefined,
       paymentDueDays: paymentMethod === "PARCELADO" ? undefined : paymentDueDays,
+      discountPercent,
     });
     if (!data) return;
     setStep(6);
@@ -472,23 +472,6 @@ export function ProposalWizard({
             ))}
           </div>
 
-          <div>
-            <label className="label">Desconto</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step="0.01"
-                className="input w-24"
-                value={discountPercent}
-                onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-              />
-              <span className="text-sm text-gray-600">%</span>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Aplicado sobre o valor total da proposta (ensaios + custos adicionais + deslocamento).</p>
-          </div>
-
           <div className="flex gap-2">
             <button onClick={() => setStep(3)} className="btn-secondary">Voltar</button>
             <button onClick={handleStep4Submit} disabled={saving} className="btn-primary">
@@ -546,6 +529,23 @@ export function ProposalWizard({
             const previewText = buildPaymentConditionText({ paymentMethod, paymentDueDays, installments, firstInstallmentDueDays });
             return previewText ? <p className="text-xs text-gray-500 italic">&quot;{previewText}&quot;</p> : null;
           })()}
+
+          <div>
+            <label className="label">Desconto</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                className="input w-24"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+              />
+              <span className="text-sm text-gray-600">%</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Aplicado sobre o valor total da proposta (ensaios + custos adicionais + deslocamento).</p>
+          </div>
 
           {paymentMethod === "DEPOSITO_PIX" && (
             <div className="rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800 px-3 py-2">

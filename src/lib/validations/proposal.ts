@@ -47,11 +47,6 @@ export const updateProposalCostsSchema = z.object({
   travelValuePerKm: z.coerce.number().min(0).optional().nullable(),
   travelOtherCosts: z.coerce.number().min(0).optional().nullable(),
   costs: z.array(proposalCostItemSchema).default([]),
-  discountPercent: z.coerce
-    .number()
-    .min(0, "O desconto não pode ser negativo.")
-    .max(100, "O percentual de desconto deve estar entre 0 e 100.")
-    .default(0),
 });
 
 export const FIRST_INSTALLMENT_DUE_DAYS_VALUES = [15, 30] as const;
@@ -67,6 +62,12 @@ export const updateProposalPaymentSchema = z
       .union([z.literal(15), z.literal(30)])
       .optional()
       .nullable(),
+    // Desconto: movido da seção de Custos para Forma de Pagamento.
+    discountPercent: z.coerce
+      .number()
+      .min(0, "O desconto não pode ser negativo.")
+      .max(100, "O percentual de desconto deve estar entre 0 e 100.")
+      .default(0),
   })
   .refine((data) => data.paymentMethod !== "PARCELADO" || (data.installments ?? 0) >= 2, {
     message: "Informe a quantidade de parcelas (mínimo 2).",

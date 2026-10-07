@@ -183,12 +183,10 @@ export function CostsSection({
   proposalId,
   initialTravel,
   initialCosts,
-  initialDiscountPercent,
 }: {
   proposalId: string;
   initialTravel: { travelDistanceKm: number | null; travelValuePerKm: number | null; travelOtherCosts: number | null };
   initialCosts: { description: string; value: number; type: "ART" | "OUTRO" }[];
-  initialDiscountPercent: number;
 }) {
   const router = useRouter();
   const [travel, setTravel] = useState({
@@ -197,7 +195,6 @@ export function CostsSection({
     travelOtherCosts: initialTravel.travelOtherCosts?.toString() ?? "",
   });
   const [costs, setCosts] = useState(initialCosts);
-  const [discountPercent, setDiscountPercent] = useState(initialDiscountPercent);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -234,23 +231,6 @@ export function CostsSection({
         </div>
       ))}
 
-      <div className="border-t border-gray-100 mt-4 pt-4">
-        <label className="label">Desconto</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min={0}
-            max={100}
-            step="0.01"
-            className="input w-24"
-            value={discountPercent}
-            onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-          />
-          <span className="text-sm text-gray-600">%</span>
-        </div>
-        <p className="text-xs text-gray-400 mt-1">Aplicado sobre o valor total da proposta (ensaios + custos adicionais + deslocamento).</p>
-      </div>
-
       <button
         className="btn-primary text-xs mt-4"
         disabled={saving}
@@ -262,7 +242,6 @@ export function CostsSection({
               travelValuePerKm: travel.travelValuePerKm ? Number(travel.travelValuePerKm) : null,
               travelOtherCosts: travel.travelOtherCosts ? Number(travel.travelOtherCosts) : null,
               costs,
-              discountPercent,
             },
             router,
             setError,
@@ -316,6 +295,7 @@ export function PaymentSection({
   initialInstallments,
   initialPaymentDueDays,
   initialFirstInstallmentDueDays,
+  initialDiscountPercent,
   company,
 }: {
   proposalId: string;
@@ -323,6 +303,7 @@ export function PaymentSection({
   initialInstallments: number | null;
   initialPaymentDueDays: number | null;
   initialFirstInstallmentDueDays: number | null;
+  initialDiscountPercent: number;
   company: CompanyBankData | null;
 }) {
   const router = useRouter();
@@ -332,6 +313,7 @@ export function PaymentSection({
   const [firstInstallmentDueDays, setFirstInstallmentDueDays] = useState<15 | 30>(
     initialFirstInstallmentDueDays === 15 ? 15 : 30,
   );
+  const [discountPercent, setDiscountPercent] = useState(initialDiscountPercent);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -371,6 +353,24 @@ export function PaymentSection({
         </div>
       )}
       {previewText && <p className="text-xs text-gray-500 mb-3 italic">&quot;{previewText}&quot;</p>}
+
+      <div className="border-t border-gray-100 mt-1 pt-3 mb-3">
+        <label className="label">Desconto</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            className="input w-24"
+            value={discountPercent}
+            onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+          />
+          <span className="text-sm text-gray-600">%</span>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">Aplicado sobre o valor total da proposta (ensaios + custos adicionais + deslocamento).</p>
+      </div>
+
       {paymentMethod === "DEPOSITO_PIX" && (
         <div className="rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800 px-3 py-2 mb-3">
           <p className="font-medium mb-1">Dados bancários da empresa (preenchidos automaticamente no documento):</p>
@@ -397,6 +397,7 @@ export function PaymentSection({
               installments: paymentMethod === "PARCELADO" ? installments : undefined,
               firstInstallmentDueDays: paymentMethod === "PARCELADO" ? firstInstallmentDueDays : undefined,
               paymentDueDays: paymentMethod === "PARCELADO" ? undefined : paymentDueDays,
+              discountPercent,
             },
             router,
             setError,
@@ -454,8 +455,8 @@ export function DisplayOptionsSection({
           </label>
         </div>
         <p className="text-xs text-gray-400 mt-1">
-          Se &quot;Não&quot;, o custo adicional não aparece como linha separada — é distribuído proporcionalmente nos valores dos pontos de coleta. O valor
-          total da proposta sempre inclui o custo adicional, exibido ou não.
+          Se &quot;Não&quot;, o custo adicional não aparece como linha separada — é distribuído de forma proporcional entre os ensaios da proposta (refletido
+          no valor total de cada ponto de coleta). O valor total da proposta sempre inclui o custo adicional, exibido ou não.
         </p>
       </div>
       <div className="mb-3">
