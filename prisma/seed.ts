@@ -210,8 +210,12 @@ async function main() {
   const epiOculos = await prisma.epi.create({ data: { name: "Óculos de Proteção", ca: "12345" } });
   const epiLuvas = await prisma.epi.create({ data: { name: "Luvas de Nitrila", ca: "23456" } });
   await prisma.epi.create({ data: { name: "Protetor Auricular", ca: "34567" } });
-  await prisma.epi.create({ data: { name: "Máscara PFF2", ca: "45678" } });
-  await prisma.epi.create({ data: { name: "Capacete de Segurança", ca: "56789" } });
+  await prisma.epi.create({ data: { name: "Máscara de Proteção PFF3", ca: "45678" } });
+  await prisma.epi.create({ data: { name: "Capacete com Jugular", ca: "56789" } });
+  await prisma.epi.create({ data: { name: "Cinto de Segurança com Talabarte Y" } });
+  await prisma.epi.create({ data: { name: "Perneira" } });
+  await prisma.epi.create({ data: { name: "Sapato de Segurança" } });
+  await prisma.epi.create({ data: { name: "Luvas Antiestática" } });
 
   const epiOrderCode = await generateEpiOrderCode(prisma);
   const acceptedAt = new Date();

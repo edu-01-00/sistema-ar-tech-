@@ -46,23 +46,36 @@ function makeItem(overrides: Partial<EpiOrderItem> = {}): EpiOrderItem {
 }
 
 describe("buildEpiOrderHtml", () => {
-  it("TESTE 1 — exibe o setor vindo do snapshot da OS", () => {
+  it("exibe o título ORDEM DE SERVIÇO SEGURANÇA E SAÚDE DO TRABALHO", () => {
+    const html = buildEpiOrderHtml(makeOrder(), makeEmployee(), null);
+    expect(html).toContain("ORDEM DE SERVIÇO SEGURANÇA E SAÚDE DO TRABALHO");
+  });
+
+  it("exibe o setor vindo do snapshot da OS", () => {
     const html = buildEpiOrderHtml(makeOrder({ sectorSnapshot: "Laboratório" }), makeEmployee(), null);
     expect(html).toContain("<strong>Setor:</strong> Laboratório");
   });
 
-  it("TESTE 2 — exibe o Cargo/Função vindo do snapshot da OS", () => {
+  it("exibe a Função vinda do snapshot da OS", () => {
     const html = buildEpiOrderHtml(makeOrder({ positionSnapshot: "Técnico de Laboratório" }), makeEmployee(), null);
-    expect(html).toContain("<strong>Cargo/Função:</strong> Técnico de Laboratório");
+    expect(html).toContain("<strong>Função:</strong> Técnico de Laboratório");
   });
 
-  it("TESTE 3 — exibe a data de emissão (issuedAt) formatada", () => {
+  it("exibe o Nº de registro do funcionário, ou '-' quando não informado", () => {
+    const comRegistro = buildEpiOrderHtml(makeOrder(), makeEmployee({ registrationNumber: "Sócio" }), null);
+    expect(comRegistro).toContain("<strong>Nº de registro:</strong> Sócio");
+
+    const semRegistro = buildEpiOrderHtml(makeOrder(), makeEmployee({ registrationNumber: null }), null);
+    expect(semRegistro).toContain("<strong>Nº de registro:</strong> -");
+  });
+
+  it("exibe a data de emissão (issuedAt) formatada", () => {
     const issuedAt = new Date("2026-10-05T10:00:00Z");
     const html = buildEpiOrderHtml(makeOrder({ issuedAt }), makeEmployee(), null);
     expect(html).toContain("<strong>Emitida em:</strong>");
   });
 
-  it("TESTE 4 — exibe o texto de atividades a serem realizadas quando informado", () => {
+  it("exibe o texto de atividades a serem realizadas quando informado", () => {
     const html = buildEpiOrderHtml(makeOrder({ activities: "Realizar coleta e preparação das amostras." }), makeEmployee(), null);
     expect(html).toContain("<strong>Atividades a serem realizadas:</strong> Realizar coleta e preparação das amostras.");
   });
@@ -72,7 +85,7 @@ describe("buildEpiOrderHtml", () => {
     expect(html).not.toContain("Atividades a serem realizadas");
   });
 
-  it("TESTE 5 — exibe todos os EPIs selecionados", () => {
+  it("exibe todos os EPIs selecionados", () => {
     const items = [
       makeItem({ id: "i1", nameSnapshot: "Óculos de Proteção" }),
       makeItem({ id: "i2", nameSnapshot: "Luvas de Nitrila" }),
@@ -84,14 +97,53 @@ describe("buildEpiOrderHtml", () => {
     expect(html).toContain("Protetor Auricular");
   });
 
-  it("TESTE 6 — exibe a assinatura/declaração de concordância quando aceita", () => {
+  it("exibe o checklist de RECOMENDAÇÕES DE SEGURANÇA", () => {
+    const html = buildEpiOrderHtml(makeOrder(), makeEmployee(), null);
+    expect(html).toContain("RECOMENDAÇÕES DE SEGURANÇA:");
+    expect(html).toContain("Não transite sem o uso de EPI em área de Risco;");
+    expect(html).toContain("Ao acessar as escadas e transitar nas plataformas utilizar sempre o corrimão.");
+  });
+
+  it("exibe o checklist de ORIENTAÇÕES DE SEGURANÇA DO TRABALHO", () => {
+    const html = buildEpiOrderHtml(makeOrder(), makeEmployee(), null);
+    expect(html).toContain("ORIENTAÇÕES DE SEGURANÇA DO TRABALHO:");
+    expect(html).toContain("Verifique as condições gerais do ambiente antes do trabalho;");
+    expect(html).toContain("Cumprir as normas internas da empresa em que se realiza a atividade");
+  });
+
+  it("exibe o parágrafo das Normas Regulamentadoras com as referências em itálico", () => {
+    const html = buildEpiOrderHtml(makeOrder(), makeEmployee(), null);
+    expect(html).toContain("Esta ordem de serviço tem como objetivo prevenir atos inseguros");
+    expect(html).toContain("<em>NR-1, item 1,7</em>");
+    expect(html).toContain("<em>NR-9 – Programa de Riscos ambientais</em>");
+    expect(html).toContain("<em>NR-6 Equipamento de Proteção individual EPI</em>");
+    expect(html).toContain("<em>NR-35 trabalho em altura</em>");
+    expect(html).toContain("<em>NR -17 Ergonomia</em>");
+  });
+
+  it("exibe o título DECLARAÇÃO e o texto fixo da declaração, independente do status de aceite", () => {
+    const pendente = buildEpiOrderHtml(makeOrder({ acceptedAt: null }), makeEmployee(), null);
+    expect(pendente).toContain("DECLARAÇÃO:");
+    expect(pendente).toContain("Declaro que recebi as orientações e treinamento que fazem parte desta Ordem de Serviço");
+
+    const aceita = buildEpiOrderHtml(
+      makeOrder({ status: "ACEITO", acceptedAt: new Date("2026-10-06T12:00:00Z"), acceptedName: "Carlos Mendes" }),
+      makeEmployee(),
+      null,
+    );
+    expect(aceita).toContain("DECLARAÇÃO:");
+    expect(aceita).toContain("Declaro que recebi as orientações e treinamento que fazem parte desta Ordem de Serviço");
+  });
+
+  it("exibe a assinatura digital (nome + data/hora) quando a OS foi aceita", () => {
     const html = buildEpiOrderHtml(
       makeOrder({ status: "ACEITO", acceptedAt: new Date("2026-10-06T12:00:00Z"), acceptedName: "Carlos Mendes" }),
       makeEmployee(),
       null,
     );
-    expect(html).toContain("Declaração de concordância");
+    expect(html).toContain("Assinado digitalmente por");
     expect(html).toContain("Carlos Mendes");
+    expect(html).toContain("<strong>Data/hora da assinatura:</strong>");
     expect(html).not.toContain("Aceite pendente");
   });
 
@@ -107,6 +159,11 @@ describe("buildEpiOrderHtml", () => {
       null,
     );
     expect(html).toContain("<strong>Setor:</strong> Administrativo");
-    expect(html).toContain("<strong>Cargo/Função:</strong> Assistente");
+    expect(html).toContain("<strong>Função:</strong> Assistente");
+  });
+
+  it("o nome da empresa no cabeçalho fica em uma única linha (sem quebra)", () => {
+    const html = buildEpiOrderHtml(makeOrder(), makeEmployee(), null);
+    expect(html).toContain("white-space: nowrap;");
   });
 });
