@@ -21,16 +21,20 @@ export function buildEpiRecordHtml(
   logoDataUri?: string | null,
 ): string {
   const itemsRowsHtml = epiRecord.items
-    .map(
-      (item) => `
+    .map((item) => {
+      const signatureCell = item.signedAt
+        ? `${escapeHtml(item.signedName)}<br /><span class="small">${formatDateTime(item.signedAt)}</span>`
+        : `<span class="pending-text">Pendente</span>`;
+      return `
       <tr>
         <td>${escapeHtml(item.description)}</td>
         <td class="center">${item.quantity}</td>
         <td class="center">${item.caNumber ? escapeHtml(item.caNumber) : "-"}</td>
         <td class="center">${formatDate(item.deliveredAt)}</td>
         <td class="center">${item.returnedAt ? formatDate(item.returnedAt) : "-"}</td>
-      </tr>`,
-    )
+        <td class="center">${signatureCell}</td>
+      </tr>`;
+    })
     .join("");
 
   // Data de admissão/demissão vêm sempre do cadastro atual do funcionário —
@@ -38,6 +42,8 @@ export function buildEpiRecordHtml(
   const admissionLabel = employee.hiredAt ? formatDate(employee.hiredAt) : "-";
   const terminationLabel = employee.terminatedAt ? formatDate(employee.terminatedAt) : "";
 
+  // Assinatura da ficha (única, na admissão) — registro reduzido e alinhado
+  // à direita, conforme ajuste solicitado.
   const signatureHtml = epiRecord.signedAt
     ? `
       <div class="signature-box">
@@ -53,19 +59,23 @@ export function buildEpiRecordHtml(
 <title>Ficha de EPI - ${escapeHtml(employee.name)}</title>
 <style>
   body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #1a1a1a; }
-  h1 { font-size: 18px; color: #1d4ed8; margin-bottom: 2px; }
+  h1 { font-size: 18px; color: #1d4ed8; margin-bottom: 2px; white-space: nowrap; }
   h2 { font-size: 14px; border-bottom: 2px solid #1d4ed8; padding-bottom: 4px; margin-top: 20px; }
-  .meta { text-align: right; }
+  .meta { text-align: right; white-space: nowrap; }
   header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 3px solid #1d4ed8; padding-bottom: 10px; }
   header .brand { display: flex; align-items: center; gap: 12px; }
-  header img.logo { max-height: 56px; max-width: 160px; object-fit: contain; }
+  header img.logo { max-height: 56px; max-width: 160px; object-fit: contain; flex-shrink: 0; }
   .declaration { margin-top: 10px; text-align: justify; line-height: 1.5; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th, td { border: 1px solid #ccc; padding: 6px; font-size: 11px; text-align: left; }
-  th { background: #f1f5f9; }
+  table.employee-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  table.employee-table td { border: 1px solid #999; padding: 6px 10px; width: 50%; }
+  table.items-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.items-table th, table.items-table td { border: 1px solid #ccc; padding: 6px; font-size: 11px; text-align: left; }
+  table.items-table th { background: #f1f5f9; }
   td.center, th.center { text-align: center; }
-  .signature-box { margin-top: 24px; border: 1px solid #999; padding: 12px; border-radius: 6px; }
-  .signature-box.pending { color: #b45309; background: #fffbeb; }
+  .small { font-size: 9px; color: #666; }
+  .pending-text { color: #b45309; }
+  .signature-box { margin-top: 24px; border: 1px solid #999; padding: 8px 12px; border-radius: 6px; font-size: 10px; text-align: right; width: fit-content; margin-left: auto; }
+  .signature-box.pending { color: #b45309; background: #fffbeb; text-align: left; width: auto; }
   footer { margin-top: 30px; font-size: 9px; color: #666; text-align: center; }
 </style>
 </head>
@@ -80,23 +90,31 @@ export function buildEpiRecordHtml(
     </div>
     <div class="meta">
       <div><strong>Ficha de EPI</strong></div>
+      <div>Setor: SST</div>
     </div>
   </header>
 
   <h2>Dados do Funcionário</h2>
-  <p><strong>Funcionário:</strong> ${escapeHtml(employee.name)}</p>
-  ${employee.position ? `<p><strong>Cargo/Função:</strong> ${escapeHtml(employee.position)}</p>` : ""}
-  ${employee.sector ? `<p><strong>Setor:</strong> ${escapeHtml(employee.sector)}</p>` : ""}
+  <table class="employee-table">
+    <tr>
+      <td><strong>Nome:</strong> ${escapeHtml(employee.name)}</td>
+      <td><strong>Nº de registro:</strong> ${employee.registrationNumber ? escapeHtml(employee.registrationNumber) : "-"}</td>
+    </tr>
+    <tr>
+      <td><strong>Setor:</strong> ${employee.sector ? escapeHtml(employee.sector) : "-"}</td>
+      <td><strong>Função:</strong> ${employee.position ? escapeHtml(employee.position) : "-"}</td>
+    </tr>
+  </table>
   <p><strong>Data de admissão:</strong> ${admissionLabel}</p>
   ${terminationLabel ? `<p><strong>Data de demissão:</strong> ${terminationLabel}</p>` : ""}
 
-  <h2>Declaração</h2>
+  <h2>TERMO DE COMPROMISSO DE ENTREGA DE EPI</h2>
   <p class="declaration">${escapeHtml(DECLARATION_TEXT)}</p>
 
   ${signatureHtml}
 
   <h2>Equipamentos de Proteção Individual (EPIs) Entregues</h2>
-  <table>
+  <table class="items-table">
     <thead>
       <tr>
         <th>Descrição</th>
@@ -104,10 +122,11 @@ export function buildEpiRecordHtml(
         <th class="center">Nº do CA</th>
         <th class="center">Data de entrega</th>
         <th class="center">Data de devolução</th>
+        <th class="center">Assinatura do Funcionário</th>
       </tr>
     </thead>
     <tbody>
-      ${itemsRowsHtml || `<tr><td colspan="5">Nenhum EPI registrado.</td></tr>`}
+      ${itemsRowsHtml || `<tr><td colspan="6">Nenhum EPI registrado.</td></tr>`}
     </tbody>
   </table>
 

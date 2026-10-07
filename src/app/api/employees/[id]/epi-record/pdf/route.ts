@@ -28,7 +28,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
     const company = await prisma.company.findFirst();
     const logoDataUri = await getCompanyLogoDataUri(company);
     const html = buildEpiRecordHtml(epiRecord, employee, company, logoDataUri);
-    const pdfBuffer = await renderHtmlToPdf(html);
+    const pdfBuffer = await renderHtmlToPdf(html, { landscape: true });
     const storageKey = await getStorageDriver().save({
       category: "epi-records",
       fileName: `ficha-epi-${employee.id}.pdf`,

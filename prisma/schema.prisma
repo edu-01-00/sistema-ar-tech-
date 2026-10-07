@@ -324,6 +324,11 @@ model EpiRecordItem {
   caNumber    String?
   deliveredAt DateTime
   returnedAt  DateTime?
+  // Assinatura digital do funcionário confirmando o recebimento DESTE EPI
+  // especificamente — distinta da assinatura única da ficha (EpiRecord.signedAt),
+  // que representa a ciência do termo de compromisso geral na admissão.
+  signedName  String?
+  signedAt    DateTime?
   createdAt   DateTime  @default(now())
 
   epiRecord EpiRecord @relation(fields: [epiRecordId], references: [id], onDelete: Cascade)

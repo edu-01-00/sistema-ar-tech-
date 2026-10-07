@@ -31,7 +31,7 @@ async function launchBrowser(): Promise<Browser> {
   });
 }
 
-export async function renderHtmlToPdf(html: string, options?: { footerTemplate?: string }): Promise<Buffer> {
+export async function renderHtmlToPdf(html: string, options?: { footerTemplate?: string; landscape?: boolean }): Promise<Buffer> {
   const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
@@ -39,6 +39,7 @@ export async function renderHtmlToPdf(html: string, options?: { footerTemplate?:
     const hasFooter = Boolean(options?.footerTemplate);
     const pdfBuffer = await page.pdf({
       format: "A4",
+      landscape: options?.landscape ?? false,
       printBackground: true,
       margin: { top: "16mm", bottom: hasFooter ? "20mm" : "16mm", left: "14mm", right: "14mm" },
       displayHeaderFooter: hasFooter,

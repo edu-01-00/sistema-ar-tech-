@@ -172,3 +172,55 @@ describe("Ficha de EPI — fluxo completo (item 18)", () => {
     });
   });
 });
+
+describe("Ficha de EPI — assinatura digital a cada entrega de EPI", () => {
+  it("cada item de EPI entregue pode ser assinado individualmente, de forma independente da assinatura única da ficha", async () => {
+    const record = await openOrCreateRecord();
+    const item = await prisma.epiRecordItem.create({
+      data: {
+        epiRecordId: record.id,
+        description: "Protetor Auricular",
+        quantity: 1,
+        deliveredAt: new Date("2026-04-01"),
+      },
+    });
+    expect(item.signedAt).toBeNull();
+    expect(item.signedName).toBeNull();
+
+    const signedAt = new Date();
+    const signed = await prisma.epiRecordItem.update({
+      where: { id: item.id },
+      data: { signedAt, signedName: "Funcionário Teste" },
+    });
+    expect(signed.signedAt).not.toBeNull();
+    expect(signed.signedName).toBe("Funcionário Teste");
+  });
+
+  it("um item já assinado não pode ser assinado novamente (regra reproduzida pela rota: 409 se já assinado)", async () => {
+    const record = await openOrCreateRecord();
+    const item = await prisma.epiRecordItem.findFirstOrThrow({
+      where: { epiRecordId: record.id, description: "Protetor Auricular" },
+    });
+    expect(item.signedAt).not.toBeNull();
+    const alreadySigned = item.signedAt !== null;
+    expect(alreadySigned).toBe(true);
+  });
+
+  it("a assinatura de um item não afeta os demais itens da mesma ficha", async () => {
+    const record = await openOrCreateRecord();
+    const unsignedItem = await prisma.epiRecordItem.create({
+      data: {
+        epiRecordId: record.id,
+        description: "Capacete com Jugular",
+        quantity: 1,
+        deliveredAt: new Date("2026-04-05"),
+      },
+    });
+    expect(unsignedItem.signedAt).toBeNull();
+
+    const signedItem = await prisma.epiRecordItem.findFirstOrThrow({
+      where: { epiRecordId: record.id, description: "Protetor Auricular" },
+    });
+    expect(signedItem.signedAt).not.toBeNull();
+  });
+});

@@ -11,6 +11,8 @@ interface EpiRecordItemInfo {
   caNumber: string | null;
   deliveredAt: string | Date;
   returnedAt: string | Date | null;
+  signedName: string | null;
+  signedAt: string | Date | null;
 }
 
 interface EpiRecordInfo {
@@ -42,6 +44,8 @@ export function EpiRecordPanel({
   const [signing, setSigning] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [returnDates, setReturnDates] = useState<Record<string, string>>({});
+  const [itemSignNames, setItemSignNames] = useState<Record<string, string>>({});
+  const [signingItemId, setSigningItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleAddItem() {
@@ -94,6 +98,29 @@ export function EpiRecordPanel({
       setError(data.error ?? "Não foi possível registrar a devolução.");
       return;
     }
+    router.refresh();
+  }
+
+  async function handleSignItem(itemId: string) {
+    const name = itemSignNames[itemId]?.trim();
+    if (!name) {
+      setError("Informe o nome completo para confirmar a assinatura do EPI.");
+      return;
+    }
+    setSigningItemId(itemId);
+    setError(null);
+    const res = await fetch(`/api/employees/${employeeId}/epi-record/items/${itemId}/sign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedName: name }),
+    });
+    setSigningItemId(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? "Não foi possível registrar a assinatura do EPI.");
+      return;
+    }
+    setItemSignNames((prev) => ({ ...prev, [itemId]: "" }));
     router.refresh();
   }
 
@@ -205,19 +232,43 @@ export function EpiRecordPanel({
                 Entregue em {formatDate(item.deliveredAt)}
                 {item.returnedAt ? ` · Devolvido em ${formatDate(item.returnedAt)}` : ""}
               </p>
-              {!item.returnedAt && (
-                <div className="mt-1 flex items-center gap-2">
-                  <input
-                    className="input max-w-[160px]"
-                    type="date"
-                    value={returnDates[item.id] ?? ""}
-                    onChange={(e) => setReturnDates((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                  />
-                  <button onClick={() => handleRegisterReturn(item.id)} className="btn-secondary text-xs">
-                    Registrar devolução
-                  </button>
-                </div>
-              )}
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {!item.returnedAt && (
+                  <>
+                    <input
+                      className="input max-w-[160px]"
+                      type="date"
+                      value={returnDates[item.id] ?? ""}
+                      onChange={(e) => setReturnDates((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                    />
+                    <button onClick={() => handleRegisterReturn(item.id)} className="btn-secondary text-xs">
+                      Registrar devolução
+                    </button>
+                  </>
+                )}
+
+                {item.signedAt ? (
+                  <span className="text-xs text-green-700">
+                    Recebimento assinado por <strong>{item.signedName}</strong> em {formatDateTime(item.signedAt)}
+                  </span>
+                ) : (
+                  <>
+                    <input
+                      className="input max-w-[160px]"
+                      placeholder="Nome completo do funcionário"
+                      value={itemSignNames[item.id] ?? ""}
+                      onChange={(e) => setItemSignNames((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                    />
+                    <button
+                      onClick={() => handleSignItem(item.id)}
+                      disabled={signingItemId === item.id}
+                      className="btn-primary text-xs"
+                    >
+                      {signingItemId === item.id ? "Assinando..." : "Assinar recebimento"}
+                    </button>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ul>

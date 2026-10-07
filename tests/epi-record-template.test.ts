@@ -44,6 +44,8 @@ function makeItem(overrides: Partial<EpiRecordItem> = {}): EpiRecordItem {
     caNumber: "12345",
     deliveredAt: new Date("2026-01-10"),
     returnedAt: null,
+    signedName: null,
+    signedAt: null,
     createdAt: new Date("2026-01-10"),
     ...overrides,
   };
@@ -57,6 +59,26 @@ describe("buildEpiRecordHtml", () => {
     expect(html).toContain("portaria nº 3.214 de 08/06/78");
     expect(html).toContain("CLT artigos 157, 158, 462");
     expect(html).toContain("Em caso de dano causado pelo empregado ou sua ocorrência de dolo o desconto será lícito.");
+  });
+
+  it("exibe o título TERMO DE COMPROMISSO DE ENTREGA DE EPI (no lugar de DECLARAÇÃO)", () => {
+    const html = buildEpiRecordHtml(makeRecord(), makeEmployee(), null);
+    expect(html).toContain("TERMO DE COMPROMISSO DE ENTREGA DE EPI");
+    expect(html).not.toContain(">Declaração<");
+  });
+
+  it("exibe 'Setor: SST' no cabeçalho, abaixo de Ficha de EPI", () => {
+    const html = buildEpiRecordHtml(makeRecord(), makeEmployee(), null);
+    expect(html).toContain("<strong>Ficha de EPI</strong>");
+    expect(html).toContain("Setor: SST");
+  });
+
+  it("exibe os dados do funcionário em tabela (Nome, Nº de registro, Setor, Função)", () => {
+    const html = buildEpiRecordHtml(makeRecord(), makeEmployee({ registrationNumber: "Sócio" }), null);
+    expect(html).toContain("<strong>Nome:</strong> Maria Oliveira");
+    expect(html).toContain("<strong>Nº de registro:</strong> Sócio");
+    expect(html).toContain("<strong>Setor:</strong> Laboratório");
+    expect(html).toContain("<strong>Função:</strong> Técnica de Laboratório");
   });
 
   it("exibe a data de admissão vinda do cadastro do funcionário", () => {
@@ -81,7 +103,7 @@ describe("buildEpiRecordHtml", () => {
     expect(html).toContain("Assinatura pendente de confirmação pelo funcionário.");
   });
 
-  it("exibe o nome e a data/hora da assinatura digital quando assinada", () => {
+  it("exibe o nome e a data/hora da assinatura digital da ficha em registro reduzido e alinhado à direita", () => {
     const html = buildEpiRecordHtml(
       makeRecord({ signedAt: new Date("2026-01-12T14:30:00Z"), signedName: "Maria Oliveira" }),
       makeEmployee(),
@@ -90,6 +112,7 @@ describe("buildEpiRecordHtml", () => {
     expect(html).toContain("<strong>Assinatura digital:</strong> Maria Oliveira");
     expect(html).toContain("<strong>Data/hora da assinatura:</strong>");
     expect(html).not.toContain("Assinatura pendente");
+    expect(html).toContain("font-size: 10px; text-align: right");
   });
 
   it("exibe todos os EPIs registrados com descrição, quantidade, CA e datas", () => {
@@ -108,6 +131,32 @@ describe("buildEpiRecordHtml", () => {
   it("exibe '-' na devolução quando o EPI ainda não foi devolvido", () => {
     const html = buildEpiRecordHtml(makeRecord({}, [makeItem({ returnedAt: null })]), makeEmployee(), null);
     expect(html).toContain("<td class=\"center\">-</td>");
+  });
+
+  it("exibe a coluna Assinatura do Funcionário com aviso pendente quando o item ainda não foi assinado", () => {
+    const html = buildEpiRecordHtml(makeRecord({}, [makeItem({ signedAt: null, signedName: null })]), makeEmployee(), null);
+    expect(html).toContain("Assinatura do Funcionário");
+    expect(html).toContain('<span class="pending-text">Pendente</span>');
+  });
+
+  it("exibe o nome e a data/hora da assinatura de cada item de EPI entregue quando assinado", () => {
+    const html = buildEpiRecordHtml(
+      makeRecord({}, [makeItem({ signedAt: new Date("2026-02-01T09:00:00Z"), signedName: "Maria Oliveira" })]),
+      makeEmployee(),
+      null,
+    );
+    expect(html).toContain("Maria Oliveira");
+    expect(html).not.toContain('<span class="pending-text">Pendente</span>');
+  });
+
+  it("a assinatura de um item não afeta a assinatura (ou pendência) de outro item na mesma ficha", () => {
+    const items = [
+      makeItem({ id: "i1", description: "Óculos de Proteção", signedAt: new Date("2026-02-01T09:00:00Z"), signedName: "Maria Oliveira" }),
+      makeItem({ id: "i2", description: "Luvas de Nitrila", signedAt: null, signedName: null }),
+    ];
+    const html = buildEpiRecordHtml(makeRecord({}, items), makeEmployee(), null);
+    const pendingCount = html.match(/<span class="pending-text">Pendente<\/span>/g)?.length ?? 0;
+    expect(pendingCount).toBe(1);
   });
 
   it("não inventa IP de assinatura (dado não registrado pelo mecanismo atual)", () => {
