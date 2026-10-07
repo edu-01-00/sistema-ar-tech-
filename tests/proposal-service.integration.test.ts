@@ -321,3 +321,115 @@ describe("Rateio proporcional do custo adicional entre os ensaios (PDF) — pers
     vi.useRealTimers();
   });
 });
+
+describe("Rateio do deslocamento entre os ensaios quando não exibido (PDF) — persistência real", () => {
+  async function setupProposalWithTravel(params: { exhibitTravelValue: boolean; useAdditionalCosts?: boolean; otherCostsValue?: number }) {
+    const { exhibitTravelValue, useAdditionalCosts = true, otherCostsValue = 0 } = params;
+    const proposal = await createProposal(userId, {
+      clientId,
+      matrices: ["QUALIDADE_AR"],
+      contactIds: [],
+      exhibitUnitValue: true,
+      useAdditionalCosts,
+      exhibitTravelValue,
+    });
+    createdProposalIds.push(proposal.id);
+
+    const point = await prisma.collectionPoint.create({ data: { clientId, matrix: "QUALIDADE_AR", name: "Ponto Único" } });
+    await prisma.proposalCollectionPoint.create({ data: { proposalId: proposal.id, collectionPointId: point.id } });
+
+    const suffix = randomUUID().slice(0, 6);
+    const testA = await prisma.test.create({ data: { name: "Ensaio A", method: "M-A", unit: "mg/m³", parameterCode: `TVA-${suffix}`, value: 1000, matrix: "QUALIDADE_AR" } });
+    const testB = await prisma.test.create({ data: { name: "Ensaio B", method: "M-B", unit: "mg/m³", parameterCode: `TVB-${suffix}`, value: 1000, matrix: "QUALIDADE_AR" } });
+    const testC = await prisma.test.create({ data: { name: "Ensaio C", method: "M-C", unit: "mg/m³", parameterCode: `TVC-${suffix}`, value: 1000, matrix: "QUALIDADE_AR" } });
+
+    await prisma.proposalTest.createMany({
+      data: [
+        { proposalId: proposal.id, testId: testA.id, collectionPointId: point.id, nameSnapshot: "Ensaio A", methodSnapshot: "M-A", unitSnapshot: "mg/m³", codeSnapshot: testA.parameterCode, valueSnapshot: 1000, quantity: 1 },
+        { proposalId: proposal.id, testId: testB.id, collectionPointId: point.id, nameSnapshot: "Ensaio B", methodSnapshot: "M-B", unitSnapshot: "mg/m³", codeSnapshot: testB.parameterCode, valueSnapshot: 1000, quantity: 1 },
+        { proposalId: proposal.id, testId: testC.id, collectionPointId: point.id, nameSnapshot: "Ensaio C", methodSnapshot: "M-C", unitSnapshot: "mg/m³", codeSnapshot: testC.parameterCode, valueSnapshot: 1000, quantity: 1 },
+      ],
+    });
+
+    // Deslocamento de R$90,00 (distância 90km x R$1/km), distribuído por 3 ensaios = R$30,00 cada.
+    await prisma.proposal.update({ where: { id: proposal.id }, data: { travelDistanceKm: 90, travelValuePerKm: 1 } });
+    if (otherCostsValue > 0) {
+      await prisma.proposalCost.create({ data: { proposalId: proposal.id, description: "Custo adicional de teste", value: otherCostsValue, type: "OUTRO" } });
+    }
+    await prisma.$transaction((tx) => recalculateProposalTotals(tx, proposal.id));
+
+    const full = await prisma.proposal.findUniqueOrThrow({ where: { id: proposal.id }, include: proposalDetailInclude });
+
+    return {
+      proposal,
+      full,
+      cleanup: async () => {
+        await prisma.proposalTest.deleteMany({ where: { proposalId: proposal.id } });
+        await prisma.proposalCost.deleteMany({ where: { proposalId: proposal.id } });
+        await prisma.test.deleteMany({ where: { id: { in: [testA.id, testB.id, testC.id] } } });
+        await prisma.proposalCollectionPoint.deleteMany({ where: { proposalId: proposal.id } });
+        await prisma.collectionPoint.deleteMany({ where: { id: point.id } });
+      },
+    };
+  }
+
+  it("'Exibir valor de deslocamento?' = Sim: ensaios mantêm o valor original e o deslocamento aparece em linha separada", async () => {
+    vi.setSystemTime(new Date(2098, 6, 6));
+    const { full, cleanup } = await setupProposalWithTravel({ exhibitTravelValue: true });
+
+    const html = buildProposalHtml(full, null, null);
+
+    expect(html).toContain(`<tr><td>Deslocamento</td><td class="text-right">${formatCurrency(90)}</td></tr>`);
+    expect(html).toContain(`<tr><td>Valor total — Ponto Único</td><td class="text-right">${formatCurrency(3000)}</td></tr>`);
+    expect(html).toContain(`<tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(3000)}</td></tr>`);
+
+    await cleanup();
+    vi.useRealTimers();
+  });
+
+  it("'Exibir valor de deslocamento?' = Não: o valor é dividido IGUALMENTE pela quantidade de ensaios (não proporcional) e somado a cada um", async () => {
+    vi.setSystemTime(new Date(2098, 6, 7));
+    const { full, cleanup } = await setupProposalWithTravel({ exhibitTravelValue: false });
+
+    const html = buildProposalHtml(full, null, null);
+
+    // R$90 / 3 ensaios = R$30 cada -> 1000 + 30 = 1030 por ensaio
+    expect(html).toContain(formatCurrency(1030));
+    expect(html).not.toContain(`<tr><td>Deslocamento</td>`);
+    expect(html).toContain(`<tr><td>Valor total — Ponto Único</td><td class="text-right">${formatCurrency(3090)}</td></tr>`);
+    expect(html).toContain(`<tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(3090)}</td></tr>`);
+
+    await cleanup();
+    vi.useRealTimers();
+  });
+
+  it("rateio do deslocamento e do custo adicional são independentes e se combinam no mesmo ensaio", async () => {
+    vi.setSystemTime(new Date(2098, 6, 8));
+    const { full, cleanup } = await setupProposalWithTravel({ exhibitTravelValue: false, useAdditionalCosts: false, otherCostsValue: 600 });
+
+    const html = buildProposalHtml(full, null, null);
+
+    // ensaios de valor igual (1000 cada): custo adicional 600/3=200 + deslocamento 90/3=30 -> 1000+200+30=1230 cada
+    expect(html).toContain(formatCurrency(1230));
+    expect(html).toContain(`<tr><td>Valor total — Ponto Único</td><td class="text-right">${formatCurrency(3690)}</td></tr>`);
+    expect(html).toContain(`<tr><td>Total de ensaios</td><td class="text-right">${formatCurrency(3690)}</td></tr>`);
+    expect(html).not.toContain("Custo adicional de teste");
+    expect(html).not.toContain(`<tr><td>Deslocamento</td>`);
+
+    await cleanup();
+    vi.useRealTimers();
+  });
+
+  it("o valor total da proposta é idêntico exibindo ou não o deslocamento", async () => {
+    vi.setSystemTime(new Date(2098, 6, 9));
+    const sim = await setupProposalWithTravel({ exhibitTravelValue: true });
+    const nao = await setupProposalWithTravel({ exhibitTravelValue: false });
+
+    expect(Number(sim.full.totalValue)).toBe(Number(nao.full.totalValue));
+    expect(Number(sim.full.totalValue)).toBe(3090);
+
+    await sim.cleanup();
+    await nao.cleanup();
+    vi.useRealTimers();
+  });
+});

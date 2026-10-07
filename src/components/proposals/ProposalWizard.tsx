@@ -332,7 +332,10 @@ export function ProposalWizard({
                   <input type="radio" checked={!exhibitTravelValue} onChange={() => setExhibitTravelValue(false)} /> Não
                 </label>
               </div>
-              <p className="text-xs text-gray-400 mt-1">O valor de deslocamento é sempre somado ao total, mesmo quando oculto no documento.</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Se &quot;Não&quot;, o deslocamento não aparece como linha separada — é dividido igualmente pela quantidade de ensaios e somado ao
+                valor de cada um. O valor total da proposta sempre inclui o deslocamento, exibido ou não.
+              </p>
             </div>
           </div>
 

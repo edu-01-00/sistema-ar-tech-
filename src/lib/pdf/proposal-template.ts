@@ -4,7 +4,7 @@ import { formatCurrency, formatDate, MATRIX_LABELS, PAYMENT_METHOD_LABELS } from
 import { escapeHtml, nl2br } from "@/lib/pdf/html-utils";
 import { BRAZILIAN_STATES } from "@/lib/br-locations";
 import { formatCnpj } from "@/lib/cnpj";
-import { buildPaymentConditionText, computePointDisplaySubtotals, sumDisplaySubtotals, round2 } from "@/lib/proposal-logic";
+import { buildPaymentConditionText, computePointDisplaySubtotals, distributeAmountProportionally, round2 } from "@/lib/proposal-logic";
 
 type TextSnapshot = ProposalWithDetails["textSnapshots"][number];
 
@@ -96,7 +96,29 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
     otherCostsTotal: Number(proposal.otherCostsTotal),
     distributeOtherCosts: !proposal.useAdditionalCosts,
   });
-  const testLineDisplayById = new Map(testLineSubtotals.map((s) => [s.key, s.displaySubtotal]));
+
+  // Rateio do deslocamento: quando "Exibir valor de deslocamento no
+  // documento?" = Não, o deslocamento não aparece como linha separada — seu
+  // valor é dividido IGUALMENTE pela quantidade de ensaios (ao contrário do
+  // custo adicional, que é proporcional ao valor de cada ensaio) e somado ao
+  // valor exibido de cada um. O valor total da proposta sempre inclui o
+  // deslocamento, exibido ou não.
+  const travelTotal = Number(proposal.travelTotalValue ?? 0);
+  const travelShares =
+    proposal.exhibitTravelValue || proposal.tests.length === 0 || travelTotal === 0
+      ? proposal.tests.map(() => 0)
+      : distributeAmountProportionally(
+          travelTotal,
+          proposal.tests.map(() => 1),
+        );
+  const travelShareById = new Map(proposal.tests.map((t, i) => [t.id, travelShares[i] ?? 0]));
+
+  // Valor final exibido de cada ensaio: valor original + rateio do custo
+  // adicional (se aplicável) + rateio do deslocamento (se aplicável) — os
+  // dois rateios são independentes e podem ocorrer juntos.
+  const testLineDisplayById = new Map(
+    testLineSubtotals.map((s) => [s.key, round2(s.displaySubtotal + (travelShareById.get(s.key) ?? 0))]),
+  );
 
   // Item 13-14: tabela de serviços — sem "código do parâmetro", com LQ +
   // unidade (do cadastro do ensaio) e coluna Acreditado/CGCRE (também do
@@ -146,10 +168,12 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
   // coleta, seguido (se demonstrados) dos outros custos, depois o somatório
   // total dos ensaios, o deslocamento (rótulo simples, sem o cálculo entre
   // parênteses — exibido apenas se exhibitTravelValue estiver ativo, mas
-  // sempre somado ao valor final, exibido ou não), o desconto (se houver) e
-  // por fim o valor total. O total de cada ponto é a soma dos valores já
-  // rateados (por ensaio) dos seus próprios ensaios — nunca uma segunda
-  // distribuição — garantindo que a soma bata exatamente com o rateio.
+  // sempre somado ao valor final, exibido ou não — quando oculto, seu valor
+  // já está incorporado ao total de cada ensaio, ver testLineDisplayById
+  // acima), o desconto (se houver) e por fim o valor total. O total de cada
+  // ponto é a soma dos valores já rateados (por ensaio) dos seus próprios
+  // ensaios — nunca uma segunda distribuição — garantindo que a soma bata
+  // exatamente com o rateio.
   const pointSubtotalsHtml = proposal.collectionPoints
     .map(({ collectionPoint }) => {
       const tests = testsByPoint.get(collectionPoint.id) ?? [];
@@ -157,7 +181,7 @@ export function buildProposalHtml(proposal: ProposalWithDetails, company: Compan
       return `<tr><td>Valor total — ${escapeHtml(collectionPoint.name)}</td><td class="text-right">${formatCurrency(pointDisplayTotal)}</td></tr>`;
     })
     .join("");
-  const ensaiosDisplayTotal = sumDisplaySubtotals(testLineSubtotals);
+  const ensaiosDisplayTotal = round2([...testLineDisplayById.values()].reduce((sum, v) => sum + v, 0));
 
   const costsHtml = proposal.costs
     .map((c) => `<tr><td>${escapeHtml(c.description)}</td><td class="text-right">${formatCurrency(Number(c.value))}</td></tr>`)
