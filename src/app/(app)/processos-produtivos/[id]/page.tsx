@@ -4,9 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/guards";
 import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { formatDateTime, MATRIX_LABELS } from "@/lib/format";
+import { Badge } from "@/components/ui/Badge";
+import { formatDateTime, MATRIX_LABELS, PRODUCTIVE_PROCESS_STATUS_LABELS, PRODUCTIVE_PROCESS_STATUS_COLORS } from "@/lib/format";
 import { productiveProcessDetailInclude } from "@/lib/services/productive-process-service";
+import type { ProductiveProcessStatusValue } from "@/lib/productive-process-logic";
 import { GenerateServiceOrderForm } from "@/components/productive-processes/GenerateServiceOrderForm";
+import { CampaignExecutionPanel } from "@/components/productive-processes/CampaignExecutionPanel";
 
 export default async function ProcessoProdutivoDetailPage({ params }: { params: { id: string } }) {
   const session = await requirePagePermission(["productive_processes.view", "productive_processes.manage"]);
@@ -21,11 +24,17 @@ export default async function ProcessoProdutivoDetailPage({ params }: { params: 
   // Parâmetros/ensaios disponíveis para a geração de Ordem de Serviço: os
   // mesmos já vinculados a este ponto de coleta dentro da proposta de
   // origem — nunca uma lista independente (item 5 do requisito).
-  const availableTests = await prisma.proposalTest.findMany({
-    where: { proposalId: productiveProcess.proposalId, collectionPointId: productiveProcess.collectionPointId },
-    include: { test: true },
-    orderBy: { nameSnapshot: "asc" },
-  });
+  const [availableTests, users, equipmentCatalog] = await Promise.all([
+    prisma.proposalTest.findMany({
+      where: { proposalId: productiveProcess.proposalId, collectionPointId: productiveProcess.collectionPointId },
+      include: { test: true },
+      orderBy: { nameSnapshot: "asc" },
+    }),
+    prisma.user.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.equipment.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+  ]);
+
+  const status = productiveProcess.status as ProductiveProcessStatusValue;
 
   return (
     <div>
@@ -33,9 +42,12 @@ export default async function ProcessoProdutivoDetailPage({ params }: { params: 
         title={productiveProcess.code}
         description={`Proposta: ${productiveProcess.proposal.code} · Cliente: ${productiveProcess.proposal.client.corporateName} · Ponto de coleta: ${productiveProcess.collectionPoint.name} (${MATRIX_LABELS[productiveProcess.collectionPoint.matrix] ?? productiveProcess.collectionPoint.matrix})`}
         actions={
-          <Link href={`/propostas/${productiveProcess.proposalId}`} className="btn-secondary text-xs">
-            Ver proposta
-          </Link>
+          <>
+            <Badge className={PRODUCTIVE_PROCESS_STATUS_COLORS[status]}>{PRODUCTIVE_PROCESS_STATUS_LABELS[status]}</Badge>
+            <Link href={`/propostas/${productiveProcess.proposalId}`} className="btn-secondary text-xs">
+              Ver proposta
+            </Link>
+          </>
         }
       />
 
@@ -52,6 +64,31 @@ export default async function ProcessoProdutivoDetailPage({ params }: { params: 
           Gerado por {productiveProcess.createdBy.name} em {formatDateTime(productiveProcess.createdAt)}.
         </p>
       </div>
+
+      {canManage && (
+        <div className="mb-6">
+          <CampaignExecutionPanel
+            productiveProcessId={productiveProcess.id}
+            status={status}
+            matrix={productiveProcess.collectionPoint.matrix}
+            users={users}
+            equipmentCatalog={equipmentCatalog}
+            samplingPlan={
+              productiveProcess.samplingPlan
+                ? {
+                    scheduledAt: productiveProcess.samplingPlan.scheduledAt,
+                    fieldResponsible: productiveProcess.samplingPlan.fieldResponsible,
+                    notes: productiveProcess.samplingPlan.notes,
+                    equipmentChecks: productiveProcess.samplingPlan.equipmentChecks,
+                  }
+                : null
+            }
+            custodyEntry={productiveProcess.custodyEntry}
+            sampleAcceptance={productiveProcess.sampleAcceptance}
+            resultWorksheet={productiveProcess.resultWorksheet}
+          />
+        </div>
+      )}
 
       <div className="card p-5 mb-6">
         <h2 className="text-sm font-semibold text-gray-800 mb-3">Ordens de Serviço</h2>

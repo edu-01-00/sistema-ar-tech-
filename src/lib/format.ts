@@ -49,6 +49,36 @@ export const PROPOSAL_STATUS_COLORS: Record<string, string> = {
   CANCELADA: "bg-red-100 text-red-800",
 };
 
+// Campanha de Monitoramento — ciclo de vida técnico (ISO 17025) de cada
+// Processo Produtivo (1 por ponto de coleta/matriz).
+export const PRODUCTIVE_PROCESS_STATUS_LABELS: Record<string, string> = {
+  PLANEJADO: "Planejado",
+  AGENDADO: "Agendado",
+  EM_CAMPO: "Em campo",
+  RECEBIDO_CUSTODIA: "Recebido/Custódia",
+  EM_ANALISE: "Em análise",
+  VALIDADO: "Validado",
+  REJEITADO: "Rejeitado",
+  CANCELADO: "Cancelado",
+};
+
+export const PRODUCTIVE_PROCESS_STATUS_COLORS: Record<string, string> = {
+  PLANEJADO: "bg-gray-100 text-gray-700",
+  AGENDADO: "bg-blue-100 text-blue-700",
+  EM_CAMPO: "bg-indigo-100 text-indigo-700",
+  RECEBIDO_CUSTODIA: "bg-purple-100 text-purple-700",
+  EM_ANALISE: "bg-amber-100 text-amber-700",
+  VALIDADO: "bg-green-100 text-green-700",
+  REJEITADO: "bg-red-100 text-red-700",
+  CANCELADO: "bg-red-100 text-red-800",
+};
+
+export const ACCEPTANCE_STATUS_LABELS: Record<string, string> = {
+  ACEITA: "Aceita",
+  ACEITA_COM_RESSALVAS: "Aceita com ressalvas",
+  REJEITADA: "Rejeitada",
+};
+
 export const EMPLOYEE_DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
   CONTRATACAO: "Contratação",
   SEGURANCA_TRABALHO: "Segurança do Trabalho",

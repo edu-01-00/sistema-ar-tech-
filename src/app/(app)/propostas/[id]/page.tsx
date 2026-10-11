@@ -238,6 +238,7 @@ export default async function PropostaDetailPage({ params }: { params: { id: str
                 code: pp.code,
                 collectionPointId: pp.collectionPointId,
                 collectionPointName: pp.collectionPoint.name,
+                status: pp.status,
               }))}
               canManage={canManageProductiveProcesses}
             />

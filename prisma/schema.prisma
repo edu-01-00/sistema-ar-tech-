@@ -92,18 +92,24 @@ model User {
   employee        Employee?        @relation(fields: [employeeId], references: [id])
   userPermissions UserPermission[]
 
-  uploadedCompanyDocuments     CompanyDocument[]
-  uploadedEmployeeDocuments    EmployeeDocument[]
-  createdEpiOrders             EpiOrder[]
-  createdEpiRecords            EpiRecord[]
-  createdProductiveProcesses   ProductiveProcess[]     @relation("ProductiveProcessCreatedBy")
-  createdServiceOrders         ServiceOrder[]          @relation("ServiceOrderCreatedBy")
-  createdProposals             Proposal[]              @relation("ProposalCreatedBy")
-  criticalAnalysisProposals    Proposal[]              @relation("ProposalCriticalAnalysisBy")
-  proposalStatusChanges        ProposalStatusHistory[]
-  auditLogs                    AuditLog[]
-  updatedTechnicalTexts        TechnicalText[]
-  updatedProposalTextTemplates ProposalTextTemplate[]
+  uploadedCompanyDocuments      CompanyDocument[]
+  uploadedEmployeeDocuments     EmployeeDocument[]
+  createdEpiOrders              EpiOrder[]
+  createdEpiRecords             EpiRecord[]
+  createdProductiveProcesses    ProductiveProcess[]     @relation("ProductiveProcessCreatedBy")
+  createdServiceOrders          ServiceOrder[]          @relation("ServiceOrderCreatedBy")
+  createdSamplingPlans          SamplingPlan[]          @relation("SamplingPlanCreatedBy")
+  fieldResponsibleSamplingPlans SamplingPlan[]          @relation("SamplingPlanFieldResponsible")
+  receivedCustodyEntries        CustodyEntry[]
+  acceptedSampleAcceptances     SampleAcceptance[]
+  analyzedResultWorksheets      ResultWorksheet[]       @relation("ResultWorksheetAnalyzedBy")
+  validatedResultWorksheets     ResultWorksheet[]       @relation("ResultWorksheetValidatedBy")
+  createdProposals              Proposal[]              @relation("ProposalCreatedBy")
+  criticalAnalysisProposals     Proposal[]              @relation("ProposalCriticalAnalysisBy")
+  proposalStatusChanges         ProposalStatusHistory[]
+  auditLogs                     AuditLog[]
+  updatedTechnicalTexts         TechnicalText[]
+  updatedProposalTextTemplates  ProposalTextTemplate[]
 
   @@map("users")
 }
@@ -946,17 +952,34 @@ model TechnicalText {
 // PROCESSO PRODUTIVO / ORDEM DE SERVIÇO
 // =========================================================================
 
-// Processo Produtivo: gerado a partir de uma proposta APROVADA, para UM
-// único ponto de coleta selecionado pelo usuário — não é criado
-// automaticamente para todos os pontos da proposta. Uma proposta com vários
-// pontos pode ter vários Processos Produtivos, um por ponto selecionado.
+enum ProductiveProcessStatus {
+  PLANEJADO
+  AGENDADO
+  EM_CAMPO
+  RECEBIDO_CUSTODIA
+  EM_ANALISE
+  VALIDADO
+  REJEITADO
+  CANCELADO
+}
+
+// Processo Produtivo: gerado para UM ponto de coleta da proposta — e, desde
+// a Campanha de Monitoramento, criado AUTOMATICAMENTE (junto com sua Ordem
+// de Serviço) para cada ponto de coleta assim que a proposta é aprovada
+// (changeProposalStatus), além de poder ser gerado manualmente como antes.
+// Uma proposta com vários pontos sempre tem um Processo Produtivo por ponto.
+// Como cada CollectionPoint pertence a uma única matriz, o Processo
+// Produtivo é também, na prática, o "item de execução" por matriz/ponto —
+// é nele que pendura o ciclo de vida técnico (Plano de Amostragem, Entrada
+// e Custódia, Checagem/Aceitação, Resultados) exigido pela ISO/IEC 17025.
 // Numeração sequencial anual (PP 001/2026), reaproveitando o contador
 // genérico `Sequence` (chave "PP_<ano>"), reiniciada a cada novo ano.
 model ProductiveProcess {
-  id             String @id @default(cuid())
-  code           String @unique // ex: "PP 001/2026"
+  id             String                  @id @default(cuid())
+  code           String                  @unique // ex: "PP 001/2026"
   sequenceNumber Int
   year           Int
+  status         ProductiveProcessStatus @default(PLANEJADO)
 
   proposalId        String
   collectionPointId String
@@ -974,6 +997,11 @@ model ProductiveProcess {
   collectionPoint CollectionPoint @relation(fields: [collectionPointId], references: [id])
   createdBy       User            @relation("ProductiveProcessCreatedBy", fields: [createdById], references: [id])
   serviceOrders   ServiceOrder[]
+
+  samplingPlan     SamplingPlan?
+  custodyEntry     CustodyEntry?
+  sampleAcceptance SampleAcceptance?
+  resultWorksheet  ResultWorksheet?
 
   @@index([proposalId])
   @@index([collectionPointId])
@@ -1018,6 +1046,166 @@ model ServiceOrderItem {
 
   @@index([serviceOrderId])
   @@map("service_order_items")
+}
+
+// =========================================================================
+// CAMPANHA DE MONITORAMENTO — EXECUÇÃO TÉCNICA (ISO/IEC 17025)
+// =========================================================================
+// As 4 fases do ciclo de vida técnico (Plano de Amostragem, Entrada e
+// Custódia, Checagem/Aceitação, Resultados) penduram 1:1 em
+// ProductiveProcess, que já é o "item de execução" por ponto/matriz. A aba
+// por matriz na tela da proposta é apenas um agrupamento visual dos
+// ProductiveProcess daquela proposta por collectionPoint.matrix — não
+// precisa de uma tabela própria.
+
+// Catálogo de equipamentos reutilizável (sonômetros, bombas, etc.), com
+// validade de calibração (RBC) para apoiar a auditoria da ISO 17025.
+model Equipment {
+  id                     String    @id @default(cuid())
+  name                   String
+  serialNumber           String?
+  calibrationCertificate String?
+  calibrationValidUntil  DateTime?
+  active                 Boolean   @default(true)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  samplingPlanChecks SamplingPlanEquipment[]
+
+  @@map("equipment")
+}
+
+// Fase 1 — Plano de Amostragem (ISO 7.3): agendamento da coleta/medição em
+// campo e checklist de equipamentos necessários. Os pontos monitorados já
+// são os do próprio ProductiveProcess (1 ponto por processo) — não há
+// seleção de ponto aqui, pois o ponto já foi definido na proposta.
+model SamplingPlan {
+  id                  String   @id @default(cuid())
+  productiveProcessId String   @unique
+  scheduledAt         DateTime
+  fieldResponsibleId  String
+  notes               String?
+  createdById         String
+  createdAt           DateTime @default(now())
+
+  productiveProcess ProductiveProcess       @relation(fields: [productiveProcessId], references: [id])
+  fieldResponsible  User                    @relation("SamplingPlanFieldResponsible", fields: [fieldResponsibleId], references: [id])
+  createdBy         User                    @relation("SamplingPlanCreatedBy", fields: [createdById], references: [id])
+  equipmentChecks   SamplingPlanEquipment[]
+
+  @@map("sampling_plans")
+}
+
+// Snapshot da validade de calibração no momento do uso — alterar a
+// calibração do equipamento depois nunca altera um plano já registrado
+// (mesmo padrão de snapshot usado em ProposalTest/EpiOrderItem).
+model SamplingPlanEquipment {
+  id                            String    @id @default(cuid())
+  samplingPlanId                String
+  equipmentId                   String
+  calibrationValidUntilSnapshot DateTime?
+
+  samplingPlan SamplingPlan @relation(fields: [samplingPlanId], references: [id], onDelete: Cascade)
+  equipment    Equipment    @relation(fields: [equipmentId], references: [id])
+
+  @@index([samplingPlanId])
+  @@map("sampling_plan_equipment")
+}
+
+// Fase 2 — Entrada e Custódia (ISO 7.4): chegada ao laboratório (ou
+// conclusão da medição in situ), responsável pela coleta/transporte e
+// condições climáticas de campo registradas.
+model CustodyEntry {
+  id                  String   @id @default(cuid())
+  productiveProcessId String   @unique
+  arrivedAt           DateTime
+  receivedById        String
+  weatherConditions   String?
+  temperatureC        Decimal? @db.Decimal(5, 2)
+  humidityPercent     Decimal? @db.Decimal(5, 2)
+  createdAt           DateTime @default(now())
+
+  productiveProcess ProductiveProcess @relation(fields: [productiveProcessId], references: [id])
+  receivedBy        User              @relation(fields: [receivedById], references: [id])
+
+  @@map("custody_entries")
+}
+
+enum AcceptanceStatus {
+  ACEITA
+  ACEITA_COM_RESSALVAS
+  REJEITADA
+}
+
+// Fase 3 — Checagem e Aceitação (ISO 7.4): critérios de aceitação
+// (integridade de filtros, soluções absorvedoras, lacres) e registro de
+// anomalias/desvios quando rejeitada ou aceita com ressalvas.
+model SampleAcceptance {
+  id                  String           @id @default(cuid())
+  productiveProcessId String           @unique
+  status              AcceptanceStatus
+  filtersIntegrityOk  Boolean          @default(true)
+  sealsIntegrityOk    Boolean          @default(true)
+  absorbentSolutionOk Boolean          @default(true)
+  deviationNotes      String?
+  acceptedById        String
+  acceptedAt          DateTime         @default(now())
+
+  productiveProcess ProductiveProcess @relation(fields: [productiveProcessId], references: [id])
+  acceptedBy        User              @relation(fields: [acceptedById], references: [id])
+
+  @@map("sample_acceptances")
+}
+
+// Fase 4 — Resultados (Folha de Trabalho / Worksheet). Base comum +
+// detalhe específico por matriz (gravimetria para EA/QAR, leituras
+// acústicas para RA) — mesmo padrão de base+detalhe por matriz já usado em
+// CollectionPoint (AirQuality/AtmosphericEmission/Noise).
+model ResultWorksheet {
+  id                  String    @id @default(cuid())
+  productiveProcessId String    @unique
+  analyzedById        String?
+  analyzedAt          DateTime?
+  validatedById       String?
+  validatedAt         DateTime?
+
+  productiveProcess ProductiveProcess @relation(fields: [productiveProcessId], references: [id])
+  analyzedBy        User?             @relation("ResultWorksheetAnalyzedBy", fields: [analyzedById], references: [id])
+  validatedBy       User?             @relation("ResultWorksheetValidatedBy", fields: [validatedById], references: [id])
+
+  gravimetry ResultWorksheetGravimetry?
+  acoustic   ResultWorksheetAcoustic?
+
+  @@map("result_worksheets")
+}
+
+// Detalhe EA/QAR: pesagem de filtros (gravimetria), branco de campo e
+// leitura de laboratório.
+model ResultWorksheetGravimetry {
+  resultWorksheetId  String   @id
+  filterWeightBefore Decimal? @db.Decimal(10, 4)
+  filterWeightAfter  Decimal? @db.Decimal(10, 4)
+  fieldBlankWeight   Decimal? @db.Decimal(10, 4)
+  labReadingValue    Decimal? @db.Decimal(12, 4)
+  sampledVolumeM3    Decimal? @db.Decimal(10, 4)
+
+  resultWorksheet ResultWorksheet @relation(fields: [resultWorksheetId], references: [id])
+
+  @@map("result_worksheet_gravimetry")
+}
+
+// Detalhe RA: medições diretas de dB(A) (L90, Leq, L10) e ruído de fundo.
+model ResultWorksheetAcoustic {
+  resultWorksheetId  String   @id
+  leqDba             Decimal? @db.Decimal(6, 2)
+  l10Dba             Decimal? @db.Decimal(6, 2)
+  l90Dba             Decimal? @db.Decimal(6, 2)
+  backgroundNoiseDba Decimal? @db.Decimal(6, 2)
+  measurementMinutes Int?
+
+  resultWorksheet ResultWorksheet @relation(fields: [resultWorksheetId], references: [id])
+
+  @@map("result_worksheet_acoustic")
 }
 
 // =========================================================================
