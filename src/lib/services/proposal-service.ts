@@ -11,7 +11,6 @@ import {
   type ProposalStatusValue,
 } from "@/lib/proposal-logic";
 import type { CreateProposalInput } from "@/lib/validations/proposal";
-import { generateCampaignExecution } from "@/lib/services/productive-process-service";
 
 type TxClient = Prisma.TransactionClient;
 
@@ -287,12 +286,6 @@ export async function changeProposalStatus(userId: string, proposalId: string, n
       },
       tx,
     );
-
-    // Campanha de Monitoramento: proposta aprovada gera automaticamente o
-    // Processo Produtivo + Ordem de Serviço de cada ponto de coleta.
-    if (newStatus === "APROVADA") {
-      await generateCampaignExecution(tx, userId, proposalId);
-    }
 
     return result;
   });
